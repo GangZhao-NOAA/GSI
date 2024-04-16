@@ -726,6 +726,10 @@ subroutine read_obs(ndata,mype)
     use gsi_4dvar, only: l4dvar
     use satthin, only: super_val,super_val1,superp,makegvals,getsfc,destroy_sfc
     use satthin, only: get_hsst
+
+    use satthin, only: zs_full, isli_full, isli_anl
+    use gridmod, only: nlat_sfc, nlon_sfc
+
     use mpimod, only: ierror,mpi_comm_world,mpi_sum,mpi_max,mpi_rtype,mpi_integer,npe,&
          setcomm
     use constants, only: one,zero,izero
@@ -805,6 +809,9 @@ subroutine read_obs(ndata,mype)
     real(r_kind) gstime,val_dat,rmesh,twind,rseed
     real(r_kind),allocatable,dimension(:) :: prslsm,hgtlsm,work1
     real(r_kind),allocatable,dimension(:,:,:):: prsl_full,hgtl_full
+
+    integer    :: iunit_t
+    character(len=80) :: fname_t
 
     type(rad_obs_type) :: radmod
 
@@ -1330,7 +1337,29 @@ subroutine read_obs(ndata,mype)
 !   Create full horizontal surface fields from local fields in guess_grids
     call getsfc(mype,mype_io_sfc,use_sfc,use_sfc_any)
     if ( .not. regional )  call get_hsst(mype_io_sfc)
-   
+
+!   Dump out terrain and land-mask (in full fields)
+    iunit_t = 1000 + mype
+    write(fname_t, 100) mype
+  100 format('zs_full_terrain_pe',I4.4,'.dat')
+    open(iunit_t, file=trim(adjustl(fname_t)), form='unformatted')
+    if ( mype == 0 ) then
+       write(6,'(1x,A)')'read_obs::dump out zs_full/isli_full/isli_anl to binary file zs_full_terrain.dat'
+       write(6,'(1x,A,4(1x,I6))')'read_obs:: nlat, nlon, nlat_sfc, nlon_sfc = ', nlat, nlon, nlat_sfc, nlon_sfc
+       write(6,'(1x,A,6(1x,I12))')'read_obs:: rank/shape/size of zs_full        = ', rank(zs_full), shape(zs_full), size(zs_full), size(zs_full, 1), size(zs_full, 2)
+       write(6,'(1x,A,6(1x,I12))')'read_obs:: rank/shape/size of isli_full      = ', rank(isli_full), shape(isli_full), size(isli_full), size(isli_full, 1), size(isli_full, 2)
+       write(6,'(1x,A,6(1x,I12))')'read_obs:: rank/shape/size of isli_anl       = ', rank(isli_anl), shape(isli_anl), size(isli_anl), size(isli_anl, 1), size(isli_anl, 2)
+       write(6,'(1x,A,2(1x,F13.5))')'read_obs:: zs_full(1,1), zs_full(nlat, nlon) = ', zs_full(1,1), zs_full(nlat, nlon)
+       write(iunit_t) size(zs_full, 2), size(zs_full, 1)
+       write(iunit_t) transpose(zs_full)
+       write(iunit_t) size(isli_full, 2), size(isli_full, 1)
+       write(iunit_t) transpose(isli_full)
+       write(iunit_t) size(isli_anl, 2), size(isli_anl, 1)
+       write(iunit_t) transpose(isli_anl)
+       write(6,'(1x, A)')'read_obs::done with dump out zs_full/isli_full/isli_anl'
+    end if
+    close(iunit_t)
+    call mpi_barrier(mpi_comm_world,ierror)
 
     if(mype == mype_io) call prt_guessfc2('sfcges2',use_sfc)
 
