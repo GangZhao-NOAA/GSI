@@ -477,17 +477,17 @@ contains
     i_howv_3dda         = 0                           ! no analysis of significant wave height (howv) in 3D analysis (default)
     corp_gust           = -1.50_r_kind                ! initialised as negative & void to be skipped, in order to use
                                                       ! the value (3.0 m/s) set in sub berror_read_wgt_reg (as default).
-                                                      ! If user-specified value is preferred, set it in session
+                                                      ! If user-specified value is preferred, set the positive value in session
                                                       ! "rapidrefresh_cldsurf" of GSI namelist file
 
-    hwllp_gust          = -90000.0_r_kind             ! initialised as a value, in order to skip this negative value
-                                                      ! and to use the value (used for q) set in sub berror_read_wgt_reg.
-                                                      ! If user-specified value is preferred, set it in session
+    hwllp_gust          = -90000.0_r_kind             ! initialised as negative & void to be skipped, in order to use
+                                                      ! the value which are set in sub berror_read_wgt_reg (same as used for q).
+                                                      ! If user-specified value is preferred, set then positive value in session
                                                       ! "rapidrefresh_cldsurf" of GSI namelist file
 
-    oerr_gust           = -2.5_r_kind                 ! initialised as a negative value, in order to skip this negative value
-                                                      ! and to use the value (1.0 m/s) set in read_prepbufr.f90
-                                                      ! If user-specified value is preferred, set it in session
+    oerr_gust           = -2.5_r_kind                 ! initialised as negative & void to be skipped, in order to use
+                                                      ! the value (1.0 m/s) set in read_prepbufr.f90
+                                                      ! If user-specified value is preferred, set the positive value in session
                                                       ! "rapidrefresh_cldsurf" of GSI namelist file
 
     i_gust_3dda         = 0                           ! no analysis of wind gust (gust) in 3D analysis (default)
