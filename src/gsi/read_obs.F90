@@ -729,6 +729,9 @@ subroutine read_obs(ndata,mype)
 
     use satthin, only: zs_full, isli_full, isli_anl
     use gridmod, only: nlat_sfc, nlon_sfc
+    use gridmod, only: region_lat, region_lon   ! to dump out the earth lat/lon on analysis-A grid (in unit of radian)
+    use gridmod, only: region_dy,  region_dx    ! to dump out grid-spacing of analysis-A grid (in unit of meters)
+    use constants, only: rad2deg, deg2rad       ! to convert earth-lat/lon from radian to degree
 
     use mpimod, only: ierror,mpi_comm_world,mpi_sum,mpi_max,mpi_rtype,mpi_integer,npe,&
          setcomm
@@ -766,6 +769,8 @@ subroutine read_obs(ndata,mype)
     use mrmsmod,only: l_mrms_sparse_netcdf
     use directDA_radaruse_mod, only: l_use_dbz_directDA
     use gridmod, only: regional
+
+    use netcdf
 
     implicit none
 
@@ -812,11 +817,18 @@ subroutine read_obs(ndata,mype)
 
     integer    :: iunit_t
     character(len=80) :: fname_t
+    integer    :: ncid
+    integer    :: varid_glon, varid_glat
+    integer    :: varid_zs, varid_isli
+    integer    :: varid_dx, varid_dy
+    integer    :: dimid_x, dimid_y
 
     type(rad_obs_type) :: radmod
 
     data lunout / 81 /
     data lunsave  / 82 /
+
+    external :: stop2
 
 !*****************************************************************************
 
@@ -1342,23 +1354,82 @@ subroutine read_obs(ndata,mype)
     iunit_t = 1000 + mype
     write(fname_t, 100) mype
   100 format('zs_full_terrain_pe',I4.4,'.dat')
-    open(iunit_t, file=trim(adjustl(fname_t)), form='unformatted')
+  101 format('zs_full_terrain_pe',I4.4,'.nc4')
     if ( mype == 0 ) then
+       open(iunit_t, file=trim(adjustl(fname_t)), form='unformatted')
        write(6,'(1x,A)')'read_obs::dump out zs_full/isli_full/isli_anl to binary file zs_full_terrain.dat'
        write(6,'(1x,A,4(1x,I6))')'read_obs:: nlat, nlon, nlat_sfc, nlon_sfc = ', nlat, nlon, nlat_sfc, nlon_sfc
        write(6,'(1x,A,6(1x,I12))')'read_obs:: rank/shape/size of zs_full        = ', rank(zs_full), shape(zs_full), size(zs_full), size(zs_full, 1), size(zs_full, 2)
        write(6,'(1x,A,6(1x,I12))')'read_obs:: rank/shape/size of isli_full      = ', rank(isli_full), shape(isli_full), size(isli_full), size(isli_full, 1), size(isli_full, 2)
        write(6,'(1x,A,6(1x,I12))')'read_obs:: rank/shape/size of isli_anl       = ', rank(isli_anl), shape(isli_anl), size(isli_anl), size(isli_anl, 1), size(isli_anl, 2)
        write(6,'(1x,A,2(1x,F13.5))')'read_obs:: zs_full(1,1), zs_full(nlat, nlon) = ', zs_full(1,1), zs_full(nlat, nlon)
+       write(6,'(1x,A,6(1x,I12))')'read_obs:: rank/shape/size of region_lon      = ', rank(region_lon), shape(region_lon), size(region_lon), size(region_lon, 1), size(region_lon, 2)
+       write(6,'(1x,A,A2,2(1x,F10.4),A2)')'read_obs::lon/lat of lower-left  corner : ',' (',region_lon(   1,    1)*rad2deg, region_lat(   1,    1)*rad2deg,').'
+       write(6,'(1x,A,A2,2(1x,F10.4),A2)')'read_obs::lon/lat of lower-right corner : ',' (',region_lon(   1, nlon)*rad2deg, region_lat(   1, nlon)*rad2deg,').'
+       write(6,'(1x,A,A2,2(1x,F10.4),A2)')'read_obs::lon/lat of upper-left  corner : ',' (',region_lon(nlat,    1)*rad2deg, region_lat(nlat,    1)*rad2deg,').'
+       write(6,'(1x,A,A2,2(1x,F10.4),A2)')'read_obs::lon/lat of upper-right corner : ',' (',region_lon(nlat, nlon)*rad2deg, region_lat(nlat, nlon)*rad2deg,').'
+
+       write(6,'(1x,A,6(1x,I12))')'read_obs:: rank/shape/size of region_dx       = ', rank(region_dx ), shape(region_dx ), size(region_dx ), size(region_dx , 1), size(region_dx , 2)
+       write(6,'(1x,A,A2,2(1x,F10.4),A2)')'read_obs::dx/dy of lower-left  corner : ',' (',region_dx(   1,    1), region_dy(   1,    1),').'
+       write(6,'(1x,A,A2,2(1x,F10.4),A2)')'read_obs::dx/dy of lower-right corner : ',' (',region_dx(   1, nlon), region_dy (   1, nlon),').'
+       write(6,'(1x,A,A2,2(1x,F10.4),A2)')'read_obs::dx/dy of upper-left  corner : ',' (',region_dx(nlat,    1), region_dy(nlat,    1),').'
+       write(6,'(1x,A,A2,2(1x,F10.4),A2)')'read_obs::dx/dy of upper-right corner : ',' (',region_dx(nlat, nlon), region_dy(nlat, nlon),').'
+
        write(iunit_t) size(zs_full, 2), size(zs_full, 1)
        write(iunit_t) transpose(zs_full)
        write(iunit_t) size(isli_full, 2), size(isli_full, 1)
        write(iunit_t) transpose(isli_full)
        write(iunit_t) size(isli_anl, 2), size(isli_anl, 1)
        write(iunit_t) transpose(isli_anl)
-       write(6,'(1x, A)')'read_obs::done with dump out zs_full/isli_full/isli_anl'
+       write(iunit_t) size(region_lon, 2), size(region_lon, 1)
+       write(iunit_t) transpose(region_lon) * rad2deg
+       write(iunit_t) transpose(region_lat) * rad2deg
+       write(iunit_t) size(region_dx, 2), size(region_dx, 1)
+       write(iunit_t) transpose(region_dx)
+       write(iunit_t) transpose(region_dy)
+       write(6,'(1x, A)')'read_obs::done with dump out zs_full/isli_full/isli_anl/region_lon/region_lat'
+       close(iunit_t)
+
+       write(fname_t, 101) mype
+       call check(nf90_create(trim(fname_t), nf90_netcdf4, ncid))   
+!---    Define the dimensions
+       call check(nf90_def_dim(ncid,    "X",           nlon,    dimid_x))
+       call check(nf90_def_dim(ncid,    "Y",           nlat,    dimid_y))
+!---    Define variables
+       call check(nf90_def_var(ncid, "geolon",    nf90_double, (/dimid_x, dimid_y/), varid_glon))
+       call check(nf90_def_var(ncid, "geolat",    nf90_double, (/dimid_x, dimid_y/), varid_glat))
+       call check(nf90_def_var(ncid, "zs_full",   nf90_double, (/dimid_x, dimid_y/), varid_zs))
+       call check(nf90_def_var(ncid, "isli_full", nf90_double, (/dimid_x, dimid_y/), varid_isli))
+       call check(nf90_def_var(ncid, "dx_agrid",  nf90_double, (/dimid_x, dimid_y/), varid_dx))
+       call check(nf90_def_var(ncid, "dy_agrid",  nf90_double, (/dimid_x, dimid_y/), varid_dy))
+!---    Add the attributes
+       call check(nf90_put_att(ncid, nf90_global, 'description', '2-D fields on rotated Analysis-A grid for NA-3km RRFS-DA'))
+       call check(nf90_put_att(ncid, varid_glon,  'description', 'geographical longitude'))
+       call check(nf90_put_att(ncid, varid_glon,  'units', 'degree_east'))
+       call check(nf90_put_att(ncid, varid_glat,  'description', 'geographical latitude'))
+       call check(nf90_put_att(ncid, varid_glat,  'units', 'degree_north'))
+       call check(nf90_put_att(ncid, varid_zs,    'description', 'terrain'))
+       call check(nf90_put_att(ncid, varid_zs,    'units', 'meters'))
+       call check(nf90_put_att(ncid, varid_isli,  'description', 'sea-land-ice mask'))
+       call check(nf90_put_att(ncid, varid_isli,  'units', 'pure number'))
+       call check(nf90_put_att(ncid, varid_dx,    'description', 'analysis-grid spacing in x-direcion'))
+       call check(nf90_put_att(ncid, varid_dx,    'units', 'meters'))
+       call check(nf90_put_att(ncid, varid_dy,    'description', 'analysis-grid spacing in y-direcion'))
+       call check(nf90_put_att(ncid, varid_dy,    'units', 'meters'))
+!---    End definition of variables
+       call check(nf90_enddef(ncid))
+!---    Write the data
+       call check(nf90_put_var(ncid, varid_glon, real(transpose(region_lon)*rad2deg,8)))
+       call check(nf90_put_var(ncid, varid_glat, real(transpose(region_lat)*rad2deg,8)))
+       call check(nf90_put_var(ncid, varid_zs,   real(transpose(zs_full),8)))
+       call check(nf90_put_var(ncid, varid_isli, real(transpose(isli_full),8)))
+       call check(nf90_put_var(ncid, varid_dx,   real(transpose(region_dx),8)))
+       call check(nf90_put_var(ncid, varid_dy,   real(transpose(region_dy),8)))
+       write(6,'(1x,A,6(1x,I12))')'read_obs(after binary dumpout):: rank/shape/size of zs_full        = ', rank(zs_full), shape(zs_full), size(zs_full), size(zs_full, 1), size(zs_full, 2)
+       write(6,'(1x,A,6(1x,I12))')'read_obs(after binary dumpout):: rank/shape/size of region_lon      = ', rank(region_lon), shape(region_lon), size(region_lon), size(region_lon, 1), size(region_lon, 2)
+!---    Close the dataset
+       call check(nf90_close(ncid))
     end if
-    close(iunit_t)
     call mpi_barrier(mpi_comm_world,ierror)
 
     if(mype == mype_io) call prt_guessfc2('sfcges2',use_sfc)
@@ -2054,6 +2125,21 @@ subroutine read_obs(ndata,mype)
 
 !   End of routine
     return
+!================================================================================
+      contains
+!-----------------------------------------------------------------------
+!
+      subroutine check(status)
+      integer,intent(in) :: status
+!
+      if(status /= nf90_noerr) then
+        print *, trim(nf90_strerror(status))
+        call stop2(999)
+      end if
+      end subroutine check
+!
+!-----------------------------------------------------------------------
+!
 end subroutine read_obs
 
 

@@ -164,6 +164,9 @@ subroutine generate_anl_grid(nx,ny,grid_lon,grid_lont,grid_lat,grid_latt)
   real(r_kind) d(4),ds
   integer(i_kind) kk,k
 
+  integer iunit_t
+  character(len=100) fname_t
+
 
   nord_e2a=4
   bilinear=.false.
@@ -294,6 +297,24 @@ subroutine generate_anl_grid(nx,ny,grid_lon,grid_lont,grid_lat,grid_latt)
 
   call unrotate2deg(region_lon,region_lat,rlon_in,rlat_in, &
                     centlon,centlat,nlat,nlon)
+
+!--- temp code snipts to dump out lat/lon of analysis grid (for fv3-lam only)
+!   Dump out terrain and land-mask (in full fields)
+  iunit_t = 2000 + mype
+  write(fname_t, 100) mype
+100 format('region_latlon_full_pe',I4.4,'.dat')
+  if ( mype == 0 ) then
+       write(6,'(1x,A,6(1x,I12))')'generate_anl_grid:: rank/shape/size of region_lon      = ', rank(region_lon), shape(region_lon), size(region_lon), size(region_lon, 1), size(region_lon, 2)
+       write(6,'(1x,A,A2,2(1x,F10.4),A2)')'generate_anl_grid::lon/lat of lower-left  corner : ',' (',region_lon(   1,    1), region_lat(   1,    1),').'
+       write(6,'(1x,A,A2,2(1x,F10.4),A2)')'generate_anl_grid::lon/lat of lower-right corner : ',' (',region_lon(   1, nlon), region_lat(   1, nlon),').'
+       write(6,'(1x,A,A2,2(1x,F10.4),A2)')'generate_anl_grid::lon/lat of upper-left  corner : ',' (',region_lon(nlat,    1), region_lat(nlat,    1),').'
+       write(6,'(1x,A,A2,2(1x,F10.4),A2)')'generate_anl_grid::lon/lat of upper-right corner : ',' (',region_lon(nlat, nlon), region_lat(nlat, nlon),').'
+       open(iunit_t, file=trim(adjustl(fname_t)), form='unformatted')
+       write(iunit_t) size(region_lon, 1), size(region_lon, 2)
+       write(iunit_t) region_lon    ! no transpose used here as suggested by Manuel
+       write(iunit_t) region_lat    ! no transpose used here
+       close(iunit_t)
+  end if
 
   region_lat=region_lat*deg2rad
   region_lon=region_lon*deg2rad
