@@ -1379,8 +1379,11 @@ subroutine read_obs(ndata,mype)
 !   Dump out terrain and land-mask (in full fields)
     iunit_t = 1000 + mype
     write(fname_t, 100) mype
-  100 format('zs_full_terrain_pe',I4.4,'.dat')
-  101 format('zs_full_terrain_pe',I4.4,'.nc4')
+  100 format('terrain_slmask_pe',I4.4,'.dat')
+  101 format('terrain_slmask_pe',I4.4,'.nc4')
+  102 format('zs_full_terrain_pe',I4.4,'.dat')
+  103 format('isli_full_slmask_pe',I4.4,'.dat')
+  104 format('isli_anl_slmask_pe',I4.4,'.dat')
     if ( mype == 0 ) then
        open(iunit_t, file=trim(adjustl(fname_t)), form='unformatted')
        write(6,'(1x,A)')'read_obs::dump out zs_full/isli_full/isli_anl to binary file zs_full_terrain.dat'
@@ -1402,19 +1405,33 @@ subroutine read_obs(ndata,mype)
        write(6,'(1x,A,A2,2(1x,F10.4),A2)')'read_obs::dx/dy of upper-right corner : ',' (',region_dx(nlat, nlon), region_dy(nlat, nlon),').'
 
        write(iunit_t) size(zs_full, 2), size(zs_full, 1)
-       write(iunit_t) transpose(zs_full)
+       write(iunit_t) real(transpose(zs_full),KIND=4)                    ! real(r_kind)
        write(iunit_t) size(isli_full, 2), size(isli_full, 1)
-       write(iunit_t) transpose(isli_full)
+       write(iunit_t) real(transpose(isli_full),KIND=4)                  ! real(r_single)
        write(iunit_t) size(isli_anl, 2), size(isli_anl, 1)
-       write(iunit_t) transpose(isli_anl)
+       write(iunit_t) real(transpose(isli_anl),KIND=4)                   ! integer(i_kind)
        write(iunit_t) size(region_lon, 2), size(region_lon, 1)
-       write(iunit_t) transpose(region_lon) * rad2deg
-       write(iunit_t) transpose(region_lat) * rad2deg
+       write(iunit_t) real(transpose(region_lon) * rad2deg, KIND=4)
+       write(iunit_t) real(transpose(region_lat) * rad2deg, KIND=4)
        write(iunit_t) size(region_dx, 2), size(region_dx, 1)
-       write(iunit_t) transpose(region_dx)
-       write(iunit_t) transpose(region_dy)
-       write(6,'(1x, A)')'read_obs::done with dump out zs_full/isli_full/isli_anl/region_lon/region_lat'
+       write(iunit_t) real(transpose(region_dx),KIND=4)
+       write(iunit_t) real(transpose(region_dy),KIND=4)
        close(iunit_t)
+
+!---    dump out terrain, slmask in separated binary files
+       write(fname_t, 102) mype
+       open(iunit_t, file=trim(adjustl(fname_t)), form='unformatted')
+       write(iunit_t) real(transpose(zs_full),KIND=4)            ! --> (nlon, nlat), i.e. (nx, ny)
+       close(iunit_t)
+       write(fname_t, 103) mype
+       open(iunit_t, file=trim(adjustl(fname_t)), form='unformatted')
+       write(iunit_t) real(transpose(isli_full),KIND=4)          ! --> (nlon, nlat), i.e. (nx, ny)
+       close(iunit_t)
+       write(fname_t, 104) mype
+       open(iunit_t, file=trim(adjustl(fname_t)), form='unformatted')
+       write(iunit_t) real(transpose(isli_anl),KIND=4)           ! --> (nlon, nlat), i.e. (nx, ny)
+       close(iunit_t)
+       write(6,'(1x, A)')'read_obs::done with dump out zs_full/isli_full/isli_anl/region_lon/region_lat'
 
        write(fname_t, 101) mype
        call check(nf90_create(trim(fname_t), nf90_netcdf4, ncid))   
