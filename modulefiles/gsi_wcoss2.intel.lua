@@ -3,10 +3,9 @@ help([[
 
 local PrgEnv_intel_ver=os.getenv("PrgEnv_intel_ver") or "8.1.0"
 local intel_ver=os.getenv("intel_ver") or "19.1.3.304"
-local craype_ver=os.getenv("craype_ver") or "2.7.10"
-local cray_mpich_ver=os.getenv("cray_mpich_ver") or "8.1.7"
+local craype_ver=os.getenv("craype_ver") or "2.7.13"
+local cray_mpich_ver=os.getenv("cray_mpich_ver") or "8.1.9"
 local cmake_ver= os.getenv("cmake_ver") or "3.20.2"
-local python_ver=os.getenv("python_ver") or "3.8.6"
 local prod_util_ver=os.getenv("prod_util_ver") or "2.0.10"
 
 local hdf5_ver=os.getenv("hdf5_ver") or "1.14.0"
@@ -23,6 +22,7 @@ local nemsio_ver=os.getenv("nemsio_ver") or "2.5.4"
 local wrf_io_ver=os.getenv("wrf_io_ver") or "1.2.0"
 local ncio_ver=os.getenv("ncio_ver") or "1.1.2"
 local crtm_ver=os.getenv("crtm_ver") or "2.4.0.1"
+local crtm_fix_ver=os.getenv("crtm_fix_ver") or "2.4.0.2"
 local ncdiag_ver=os.getenv("ncdiag_ver") or "1.1.2"
 
 load(pathJoin("PrgEnv-intel", PrgEnv_intel_ver))
@@ -30,7 +30,6 @@ load(pathJoin("intel", intel_ver))
 load(pathJoin("craype", craype_ver))
 load(pathJoin("cray-mpich", cray_mpich_ver))
 load(pathJoin("cmake", cmake_ver))
-load(pathJoin("python", python_ver))
 
 load(pathJoin("prod_util", prod_util_ver))
 
@@ -41,15 +40,7 @@ load(pathJoin("netcdf-D", netcdf_ver))
 load(pathJoin("bufr", bufr_ver))
 load(pathJoin("bacio", bacio_ver))
 load(pathJoin("w3emc", w3emc_ver))
---load(pathJoin("ip", ip_ver))
--- Temporarily define IP's paths here.
--- TODO when testing is complete, request an official installation in https://github.com/NOAA-EMC/WCOSS2-requests/issues/11
-pushenv("ip_ROOT", pathJoin("/apps/ops/para/libs/intel/19.1.3.304/ip", ip_ver))
-pushenv("IP_INC4", pathJoin("/apps/ops/para/libs/intel/19.1.3.304/ip", ip_ver, "include_4"))
-pushenv("IP_INCd", pathJoin("/apps/ops/para/libs/intel/19.1.3.304/ip", ip_ver, "include_d"))
-pushenv("IP_LIB4", pathJoin("/apps/ops/para/libs/intel/19.1.3.304/ip", ip_ver, "lib64/libip_4.a"))
-pushenv("IP_LIBd", pathJoin("/apps/ops/para/libs/intel/19.1.3.304/ip", ip_ver, "lib64/libip_d.a"))
-pushenv("ip_VERSION", ip_ver)
+load(pathJoin("ip", ip_ver))
 
 load(pathJoin("sigio", sigio_ver))
 load(pathJoin("sfcio", sfcio_ver))
@@ -59,6 +50,7 @@ load(pathJoin("ncio-A", ncio_ver))
 load(pathJoin("crtm", crtm_ver))
 load(pathJoin("ncdiag-A",ncdiag_ver))
 
-pushenv("GSI_BINARY_SOURCE_DIR", "/lfs/h2/emc/global/noscrub/emc.global/FIX/fix/gsi/20241022")
+pushenv("GSI_BINARY_SOURCE_DIR", "/lfs/h2/emc/global/noscrub/emc.global/FIX/fix/gsi/20250529")
+setenv("CRTM_FIX", pathJoin("/lfs/h2/emc/global/noscrub/emc.global/FIX/fix/crtm", "v" .. crtm_fix_ver))
 
 whatis("Description: GSI environment on WCOSS2")
