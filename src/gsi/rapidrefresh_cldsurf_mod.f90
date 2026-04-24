@@ -254,8 +254,7 @@ module rapidrefresh_cldsurf_mod
 !      i_gsd_terrain_match_mesonet - namelist integer, control application of GSD Terrain Match to MESONET (MSO)
 !                                observations of Temp (188, 195)
 !                          = 0 : do not apply GSD terrain match to MESONET Obs of T (default)
-!                          = 1 : apply GSD terrain match to MESONET Obs of T (kx=188)
-!                          = 2 : apply GSD terrain match to MESONET Obs of T (kx=188/192/193/195)
+!                          = 1 : apply GSD terrain match to MESONET Obs of T (kx=188/192/193/195)
 !
 ! attributes:
 !   language: f90
