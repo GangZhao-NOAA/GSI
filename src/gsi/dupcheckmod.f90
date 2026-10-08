@@ -96,13 +96,16 @@ subroutine dupcheck(nobs, nele, data, muse, dup, &
 
   integer(i_kind)            :: i, k, l, nlen, nlen2, ipres_loc
   real(r_kind)               :: hr_offset, tfact
-  real(r_double)             :: rstn1, rstn2
-  character(len=8)           :: cstn1, cstn2
+! real(r_double)             :: rstn1, rstn2
+! character(len=8)           :: cstn1, cstn2
+! character(len=8)           :: cstn1_main, cstn2_main
+  real(r_double),   dimension(nobs) :: rstn
+  character(len=8), dimension(nobs) :: cstn
   character(len=1), parameter :: cblank = ' '
   logical :: duplogic, duplogic_1, duplogic_2, apply_pres_k
 
-  equivalence(rstn1, cstn1)
-  equivalence(rstn2, cstn2)
+! equivalence(rstn1, cstn1)
+! equivalence(rstn2, cstn2)
 
   if (present(ipres)) then
      ipres_loc = ipres
@@ -112,6 +115,16 @@ subroutine dupcheck(nobs, nele, data, muse, dup, &
 
   hr_offset = real(min_offset/60.0_r_kind,r_kind)
   dup = one
+
+  rstn(1:nobs) = data(id,1:nobs)
+  cstn = adjustl(transfer(rstn, cstn))
+  do k=1,nobs
+     do i=2,8
+        if (cstn(k)(i-1:i-1)==cblank) then
+           cstn(k)(i:i)=cblank
+        end if
+     end do
+  end do
 
   kloop: do k=1,nobs
 
@@ -123,29 +136,36 @@ subroutine dupcheck(nobs, nele, data, muse, dup, &
        apply_pres_k = .false.
     end if
 
-    rstn1 = data(id,k)
-    nlen=0
-    do i=1,8
-       if (cstn1(i:i)==cblank) exit    !stop at first blank; for mesonet station ids of the form
-       nlen=nlen+1                      !"STNIxxxxa" the trailing "a" in position 8 (preceded by blanks)
-    enddo                               !is intentionally excluded from the comparison
+!   rstn1 = data(id,k)
+!   cstn1_main(:) = cblank
+!   nlen=0
+!   do i=1,8
+!      if (cstn1(i:i)==cblank) exit    !stop at first blank; for mesonet station ids of the form
+!      nlen=nlen+1                      !"STNIxxxxa" the trailing "a" in position 8 (preceded by blanks)
+!                                       !is intentionally excluded from the comparison
+!      cstn1_main(i:i) = cstn1(i:i)
+!   enddo
 
     lloop: do l=k+1,nobs
-       rstn2 = data(id,l)
-       nlen2=0
-       do i=1,8
-          if (cstn2(i:i)==cblank) exit
-          nlen2=nlen2+1
-       enddo
+!      rstn2 = data(id,l)
+!      cstn2_main(:) = cblank
+!      nlen2=0
+!      do i=1,8
+!         if (cstn2(i:i)==cblank) exit
+!         nlen2=nlen2+1
+!         cstn2_main(i:i) = cstn2(i:i)
+!      enddo
 
        duplogic_1=abs(data(ilate,k)-data(ilate,l))<=epsdup .and.  &  !duplicate stations can have lat/lon specs
        abs(data(ilone,k)-data(ilone,l))<=epsdup                      !differing by as much as epsdup (~0.005 deg)
 
        duplogic_2=abs(data(ilate,k)-data(ilate,l))<=epsdup_2 .and.  & !station can appear as TAC station and BUFR station
-       abs(data(ilone,k)-data(ilone,l))<=epsdup_2 .and.  &            !with lat/lon specs differing by as much as epsdup_2 (~0.1 deg)
-       (nlen > 0 .and. nlen==nlen2.and.cstn1(1:nlen)==cstn2(1:nlen))  !this logic addresses this situation, but only when the station ids
+                  abs(data(ilone,k)-data(ilone,l))<=epsdup_2 .and.  &            !with lat/lon specs differing by as much as epsdup_2 (~0.1 deg)
+                  cstn(k)==cstn(l)                                   !this logic addresses this situation, but only when the station ids
+!      (nlen > 0 .and. nlen==nlen2.and.cstn1(1:nlen)==cstn2(1:nlen))  !this logic addresses this situation, but only when the station ids
                                                                        !are the same. when they are different, the duplicate obs will slip in
 
+!      duplogic_2 = .false.                                                                     
        if (apply_pres_k) then
           duplogic=(duplogic_1.or.duplogic_2).and.&
           data(ipres_loc,k) == data(ipres_loc,l) .and. &
