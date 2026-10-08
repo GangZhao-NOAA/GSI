@@ -434,8 +434,8 @@ contains
     
     dfact    = zero
     dfact1   = three
-    epsdup   = zero
-    epsdup_2 = zero
+    epsdup   = tiny(1.0_r_kind)
+    epsdup_2 = tiny(1.0_r_kind)
     varqc_iter=one
 
     erradar_inflate   = one
