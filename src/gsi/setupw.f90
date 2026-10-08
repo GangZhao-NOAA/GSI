@@ -485,6 +485,7 @@ subroutine setupw(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsav
         abs(data(ilone,k)-data(ilone,l))<=epsdup_2 .and.  &            !with lat/lon specs differing by as much as epsdup_2 (~0.1 deg)
         (nlen==nlen2.and.cstn1(1:nlen)==cstn2(1:nlen))                 !this logic addresses this situation, but only when the station ids
                                                                        !are the same. when they are different, the duplicate obs will slip in
+        duplogic_2=.false.                                                                       
         if (twodvar_regional .or. (l_rtma3d .and. rtmasfctype) ) then
            duplogic=(duplogic_1.or.duplogic_2).and.&
            data(ier,k) < r1000 .and. data(ier,l) < r1000 .and. &
