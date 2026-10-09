@@ -108,14 +108,15 @@ subroutine dupcheck(nobs, nele, data, muse, dup, &
 
   integer(i_kind)            :: i, k, l, nlen, nlen2, ipres_loc, ikxx_loc
   real(r_kind)               :: hr_offset, tfact
-  real(r_double)             :: rstn
-  character(len=8)           :: cstn, cstn_tmp
+  real(r_double),   dimension(nobs) :: rstn
+  character(len=8), dimension(nobs) :: cstn
   character(len=8), dimension(nobs) :: stnid_main
-  character(len=1), parameter :: cblank = ' '
+  character(len=8)                  :: cstn_tmp
+  character(len=1), parameter       :: cblank = ' '
   logical :: duplogic, duplogic_1, duplogic_2, apply_pres_k
   logical :: l_print_loc
 
-  equivalence(rstn, cstn)
+! equivalence(rstn, cstn)           ! equivalence is obsolete in modern FORTRAN 
 
   if (present(ipres)) then
      ipres_loc = ipres
@@ -139,11 +140,12 @@ subroutine dupcheck(nobs, nele, data, muse, dup, &
 ! Get the main station ID (the string prededing the first blank in original station ID string)  
 ! Purpose: for mesonet station ids of the form "STNIxxxa", the trailing character "a" 
 !          in position 8 (preceded by blanks) is intentionally excluded from the comparison.
+  rstn(1:nobs) = data(id, 1:nobs)
+! cstn = transfer(rstn, mold=character(len=8) :: (), size=size(rstn))
+  cstn = transfer(rstn, cstn)
   do k=1,nobs
-     rstn = data(id,k)
-!    cstn = transfer(rstn, cstn)     ! equivalence is obsolete in modern fortran
-     cstn_tmp = adjustl(cstn)        ! removing the heading space(s)
-!    if first blank was detected, set the following element(s) be blank 
+     cstn_tmp = adjustl(cstn(k))        ! removing the leading space(s)
+!    if first blank was detected, set the following element(s) be space(s)
      do i=1,7
         if (cstn_tmp(i:i) == cblank) then
            cstn_tmp(i+1:i+1) = cblank
@@ -151,7 +153,7 @@ subroutine dupcheck(nobs, nele, data, muse, dup, &
      end do
      stnid_main(k) = cstn_tmp
      if (l_print_loc) then
-        write(6,'(1x,A9,A8,A4,A8,4x,I8.8)') 'ID Check:', adjustl(cstn), '===>', stnid_main(k), k
+        write(6,'(1x,A9,A8,A4,A8,4x,I8.8)') 'ID Check:', adjustl(cstn(k)), '===>', stnid_main(k), k
      end if
   end do
 
