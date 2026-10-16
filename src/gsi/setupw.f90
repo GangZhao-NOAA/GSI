@@ -308,9 +308,11 @@ subroutine setupw(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsav
   character(8) c_prvstg,c_sprvstg
   real(r_double) r_prvstg,r_sprvstg
 
-  integer(i_kind) nlen,nlen2
-  real(r_double) rstn1,rstn2
-  character(8) cstn1,cstn2
+  real(r_double),   dimension(nobs) :: rstn
+  character(len=8), dimension(nobs) :: cstn
+  character(len=8), dimension(nobs) :: stnid_main
+  character(len=8)                  :: cstn_tmp
+  logical                           :: l_print_loc
 
   type(sparr2) :: dhx_dx_u, dhx_dx_v
   integer(i_kind) :: iz, u_ind, v_ind, nnz, nind
@@ -341,8 +343,7 @@ subroutine setupw(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsav
   equivalence(r_prvstg,c_prvstg)
   equivalence(r_sprvstg,c_sprvstg)
 
-  equivalence(rstn1,cstn1)
-  equivalence(rstn2,cstn2)
+! equivalence(rstn, cstn)           ! equivalence is obsolete in modern FORTRAN 
 
   real(r_kind),allocatable,dimension(:,:,:  ) :: ges_ps
   real(r_kind),allocatable,dimension(:,:,:  ) :: ges_z
@@ -362,6 +363,7 @@ subroutine setupw(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsav
 ! If require guess vars available, extract from bundle ...
   call init_vars_
 
+  l_print_loc = .true.
 !******************************************************************************
 ! Read and reformat observations in work arrays.
   spdb=zero
@@ -466,24 +468,43 @@ subroutine setupw(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsav
 !  handle multiple-report observations at a station
   hr_offset=min_offset/60.0_r_kind
   dup=one
+
+! Get the main station ID (the string prededing the first blank in original station ID string)  
+! Purpose: for mesonet station ids of the form "STNIxxxa", the trailing character "a" 
+!          in position 8 (preceded by blanks) is intentionally excluded from the comparison.
+  rstn(1:nobs) = data(id, 1:nobs)
+  cstn = transfer(rstn, cstn)
+  do k=1,nobs
+     ikx=nint(data(ikxx,k))
+     itype=ictype(ikx)
+     cstn_tmp = adjustl(cstn(k))        ! removing the leading space(s)
+!    if first blank was detected, set the following element(s) be space(s)
+     do i=1,7
+        if (cstn_tmp(i:i) == cblank) then
+           cstn_tmp(i+1:i+1) = cblank
+        end if
+     end do
+     stnid_main(k) = cstn_tmp
+     if (l_print_loc) then
+        write(6,'(1x,A12,A10,A8,A4,A8,4x,I8.8,4x,I3)') adjustl(myname),':ID Check:', adjustl(cstn(k)), '===>', stnid_main(k), k, itype
+     end if
+  end do
+
   kloop: do k=1,nobs
      if (.not. muse(k)) cycle kloop
      ikx=nint(data(ikxx,k))
      itype=ictype(ikx)
      rtmasfctype =(itype>=280 .and. itype<=295)
-     rstn1 = data(id,k)
-     nlen=0; do i=1,8 ; if (cstn1(i:i)==cblank) exit ; nlen=nlen+1 ; enddo !accounts for mesonet station ids that end with
-                                                                           !an "a" in the eight position preceeded by blanks
+
      lloop: do l=k+1,nobs
         if (.not. muse(l)) cycle lloop
-        rstn2 = data(id,l)
-        nlen2=0; do i=1,8 ; if (cstn2(i:i)==cblank) exit ; nlen2=nlen2+1 ; enddo
+
         duplogic_1=abs(data(ilate,k)-data(ilate,l))<=epsdup .and.  &   !duplicate stations can have lat/lon specs
-        abs(data(ilone,k)-data(ilone,l))<=epsdup                       !differing by as much as epsdup (~0.005 deg)
+                   abs(data(ilone,k)-data(ilone,l))<=epsdup            !differing by as much as epsdup (~0.005 deg)
 
         duplogic_2=abs(data(ilate,k)-data(ilate,l))<=epsdup_2 .and.  & !station can appear as TAC station and BUFR station
-        abs(data(ilone,k)-data(ilone,l))<=epsdup_2 .and.  &            !with lat/lon specs differing by as much as epsdup_2 (~0.1 deg)
-        (nlen==nlen2.and.cstn1(1:nlen)==cstn2(1:nlen))                 !this logic addresses this situation, but only when the station ids
+                   abs(data(ilone,k)-data(ilone,l))<=epsdup_2 .and.  & !with lat/lon specs differing by as much as epsdup_2 (~0.1 deg)
+                   stnid_main(k)==stnid_main(l)                        !this logic addresses this situation, but only when the station ids
                                                                        !are the same. when they are different, the duplicate obs will slip in
         if (twodvar_regional .or. (l_rtma3d .and. rtmasfctype) ) then
            duplogic=(duplogic_1.or.duplogic_2).and.&
