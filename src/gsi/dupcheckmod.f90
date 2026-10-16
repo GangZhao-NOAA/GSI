@@ -90,6 +90,7 @@ subroutine dupcheck(nobs, nele, data, muse, dup, &
   use kinds, only: r_kind, i_kind, r_double
   use constants, only: one, r1000
   use qcmod, only: dfact, dfact1, epsdup, epsdup_2
+  use convinfo, only: nconvtype,ictype,icsubtype
 ! epsdup and epsdup_2 are initialized to zero in qcmod and may be set via
 ! the OBSQC namelist group (e.g., epsdup~0.005 deg, epsdup_2~0.1 deg)
 
@@ -107,6 +108,7 @@ subroutine dupcheck(nobs, nele, data, muse, dup, &
   logical,         optional, intent(in) :: l_print
 
   integer(i_kind)            :: i, k, l, nlen, nlen2, ipres_loc, ikxx_loc
+  integer(i_kind)            :: ikx, itype
   real(r_kind)               :: hr_offset, tfact
   real(r_double),   dimension(nobs) :: rstn
   character(len=8), dimension(nobs) :: cstn
@@ -126,12 +128,12 @@ subroutine dupcheck(nobs, nele, data, muse, dup, &
   if (present(ikxx)) then
      ikxx_loc = ikxx
   else
-     ikxx_loc = 0
+     ikxx_loc = -1
   end if
   if (present(l_print)) then
      l_print_loc = l_print
   else
-     l_print_loc = .false.
+     l_print_loc = .true.
   end if
 
   hr_offset = real(min_offset/60.0_r_kind,r_kind)
@@ -141,7 +143,6 @@ subroutine dupcheck(nobs, nele, data, muse, dup, &
 ! Purpose: for mesonet station ids of the form "STNIxxxa", the trailing character "a" 
 !          in position 8 (preceded by blanks) is intentionally excluded from the comparison.
   rstn(1:nobs) = data(id, 1:nobs)
-! cstn = transfer(rstn, mold=character(len=8) :: (), size=size(rstn))
   cstn = transfer(rstn, cstn)
   do k=1,nobs
      cstn_tmp = adjustl(cstn(k))        ! removing the leading space(s)
@@ -153,7 +154,13 @@ subroutine dupcheck(nobs, nele, data, muse, dup, &
      end do
      stnid_main(k) = cstn_tmp
      if (l_print_loc) then
-        write(6,'(1x,A9,A8,A4,A8,4x,I8.8)') 'ID Check:', adjustl(cstn(k)), '===>', stnid_main(k), k
+        if (ikxx_loc > 0) then
+           ikx=nint(data(ikxx_loc,k))
+           itype=ictype(ikx)
+           write(6,'(1x,A9,A8,A4,A8,4x,I8.8,4x,I3)') 'ID Check:', adjustl(cstn(k)), '===>', stnid_main(k), k, itype
+        else
+           write(6,'(1x,A9,A8,A4,A8,4x,I8.8)') 'ID Check:', adjustl(cstn(k)), '===>', stnid_main(k), k
+        end if
      end if
   end do
 
