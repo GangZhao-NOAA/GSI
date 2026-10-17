@@ -203,7 +203,7 @@ subroutine setupvwnd10m(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_d
 ! If require guess vars available, extract from bundle ...
   call init_vars_
 
-  l_print_loc = .true.
+  l_print_loc = .false.
 !*********************************************************************************
 ! Read and reformat observations in work arrays.
   spdb=zero

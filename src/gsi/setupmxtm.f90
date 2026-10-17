@@ -177,7 +177,7 @@ subroutine setupmxtm(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diag
 ! If require guess vars available, extract from bundle ...
   call init_vars_
 
-  l_print_loc = .true.
+  l_print_loc = .false.
 !*********************************************************************************
 ! Read and reformat observations in work arrays.
   read(lunin)data,luse,ioid

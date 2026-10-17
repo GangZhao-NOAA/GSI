@@ -236,7 +236,7 @@ subroutine setupps(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsa
 
   save_jacobian = conv_diagsave .and. jiter==jiterstart .and. lobsdiag_forenkf
 
-  l_print_loc = .true.
+  l_print_loc = .false.
 !*******************************************************************************
 ! Read observations in work arrays.
 

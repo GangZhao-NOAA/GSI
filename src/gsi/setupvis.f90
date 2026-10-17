@@ -193,7 +193,7 @@ subroutine setupvis(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diags
   call init_vars_
 
   vis_errmax=20.0_r_kind
-  l_print_loc = .true.
+  l_print_loc = .false.
 !*********************************************************************************
 ! Read and reformat observations in work arrays.
   read(lunin)data,luse,ioid
