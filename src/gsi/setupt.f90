@@ -320,7 +320,6 @@ subroutine setupt(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsav
   real(r_double),   dimension(nobs) :: rstn
   character(len=8), dimension(nobs) :: cstn
   character(len=8), dimension(nobs) :: stnid_main
-! character(len=8)                  :: cstn_tmp
   logical                           :: l_print_loc
   integer(i_kind),  dimension(nobs) :: l_dupchk_2
   real(r_kind)                      :: diff_late, diff_lone
@@ -496,18 +495,14 @@ subroutine setupt(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsav
      ikx=nint(data(ikxx,k))
      itype=ictype(ikx)
      l_dupchk_2(k) = ((itype >= 180 .and. itype <= 199) .or. (itype >= 280 .and. itype <= 299))
-!    cstn_tmp = adjustl(cstn(k))        ! removing the leading space(s)
      stnid_main(k) = adjustl(cstn(k))        ! removing the leading space(s)
 !    if first blank was detected, set the following element(s) be space(s)
      stn_iloop: do i=1,7
-!       if (cstn_tmp(i:i) == cblank) then
         if (stnid_main(k)(i:i) == cblank) then
-!          cstn_tmp(i+1:i+1) = cblank
            stnid_main(k)(i+1:8) = cblank
            exit stn_iloop
         end if
      end do stn_iloop
-!    stnid_main(k) = cstn_tmp
      if (l_print_loc) then
         write(6,'(1x,A12,A10,A8,A4,A8,4x,I8.8,4x,I3,4x,L1)') adjustl(myname),':ID Check:', &
                 adjustl(cstn(k)), '===>', stnid_main(k), k, itype, l_dupchk_2(k)
