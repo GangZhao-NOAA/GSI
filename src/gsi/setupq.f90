@@ -270,13 +270,15 @@ subroutine setupq(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsav
   integer(i_kind),dimension(nobs):: ioid ! initial (pre-distribution) obs ID
 
   logical duplogic,rtmasfctype
-  logical duplogic_1,duplogic_2
+  logical duplogic_1,duplogic_2, duplogic_tmp
 
   real(r_double),   dimension(nobs) :: rstn
   character(len=8), dimension(nobs) :: cstn
   character(len=8), dimension(nobs) :: stnid_main
-  character(len=8)                  :: cstn_tmp
+! character(len=8)                  :: cstn_tmp
   logical                           :: l_print_loc
+  integer(i_kind),  dimension(nobs) :: l_dupchk_2
+  real(r_kind)                      :: diff_late, diff_lone
 
   logical:: in_curbin, in_anybin, save_jacobian
   type(qNode),pointer:: my_head
@@ -400,21 +402,28 @@ subroutine setupq(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsav
 !          in position 8 (preceded by blanks) is intentionally excluded from the comparison.
   rstn(1:nobs) = data(id, 1:nobs)
   cstn = transfer(rstn, cstn)
-  do k=1,nobs
+  l_dupchk_2(1:nobs) = .false.
+  stn_kloop: do k=1,nobs
      ikx=nint(data(ikxx,k))
      itype=ictype(ikx)
-     cstn_tmp = adjustl(cstn(k))        ! removing the leading space(s)
+     l_dupchk_2(k) = ((itype >= 180 .and. itype <= 199) .or. (itype >= 280 .and. itype <= 299))
+!    cstn_tmp = adjustl(cstn(k))        ! removing the leading space(s)
+     stnid_main(k) = adjustl(cstn(k))        ! removing the leading space(s)
 !    if first blank was detected, set the following element(s) be space(s)
-     do i=1,7
-        if (cstn_tmp(i:i) == cblank) then
-           cstn_tmp(i+1:i+1) = cblank
+     stn_iloop: do i=1,7
+!       if (cstn_tmp(i:i) == cblank) then
+        if (stnid_main(k)(i:i) == cblank) then
+!          cstn_tmp(i+1:8) = cblank
+           stnid_main(k)(i+1:8) = cblank
+           exit stn_iloop
         end if
-     end do
-     stnid_main(k) = cstn_tmp
+     end do stn_iloop
+!    stnid_main(k) = cstn_tmp
      if (l_print_loc) then
-        write(6,'(1x,A12,A10,A8,A4,A8,4x,I8.8,4x,I3)') adjustl(myname),':ID Check:', adjustl(cstn(k)), '===>', stnid_main(k), k, itype
+        write(6,'(1x,A12,A10,A8,A4,A8,4x,I8.8,4x,I3,4x,L1)') adjustl(myname),':ID Check:', &
+                adjustl(cstn(k)), '===>', stnid_main(k), k, itype, l_dupchk_2(k)
      end if
-  end do
+  end do stn_kloop
 
   kloop: do k=1,nobs
      if (.not. muse(k)) cycle kloop
@@ -426,19 +435,28 @@ subroutine setupq(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsav
      lloop: do l=k+1,nobs
         if (.not. muse(l)) cycle lloop
 
-        duplogic_1=abs(data(ilate,k)-data(ilate,l))<=epsdup .and.  &   !duplicate stations can have lat/lon specs
-                   abs(data(ilone,k)-data(ilone,l))<=epsdup            !differing by as much as epsdup (~0.005 deg)
+        diff_late = abs(data(ilate,k)-data(ilate,l))
+        diff_lone = abs(data(ilone,k)-data(ilone,l))
+        duplogic_1=diff_late<=epsdup .and.    & !duplicate stations can have lat/lon specs
+                   diff_lone<=epsdup            !differing by as much as epsdup (~0.005 deg)
 
-        duplogic_2=abs(data(ilate,k)-data(ilate,l))<=epsdup_2 .and.  & !station can appear as TAC station and BUFR station
-                   abs(data(ilone,k)-data(ilone,l))<=epsdup_2 .and.  & !with lat/lon specs differing by as much as epsdup_2 (~0.1 deg)
-                   stnid_main(k)==stnid_main(l)                        !this logic addresses this situation, but only when the station ids
-                                                                       !are the same. when they are different, the duplicate obs will slip in
+        if (l_dupchk_2(k) .and. l_dupchk_2(l)) then
+           duplogic_2=diff_late<=epsdup_2 .and.  & !station can appear as TAC station and BUFR station
+                      diff_lone<=epsdup_2 .and.  & !with lat/lon specs differing by as much as epsdup_2 (~0.1 deg)
+                      stnid_main(k)==stnid_main(l) !this logic addresses this situation, but only when the station ids
+                                                   !are the same. when they are different, the duplicate obs will slip in
+           duplogic_tmp = duplogic_1.or.duplogic_2
+        else
+           duplogic_tmp = duplogic_1
+        end if
         if (twodvar_regional .or. (l_rtma3d .and. rtmasfctype) .or. (hofx_2m_sfcfile .and. landsfctype) ) then
-           duplogic=(duplogic_1.or.duplogic_2).and.&
+!          duplogic=(duplogic_1.or.duplogic_2).and.&
+           duplogic=(duplogic_tmp).and.&
            data(ier,k) < r1000 .and. data(ier,l) < r1000 .and. &
            muse(k) .and. muse(l)
         else
-           duplogic=(duplogic_1.or.duplogic_2).and.&
+!          duplogic=(duplogic_1.or.duplogic_2).and.&
+           duplogic=(duplogic_tmp).and.&
            data(ipres,k) == data(ipres,l) .and. &
            data(ier,k) < r1000 .and. data(ier,l) < r1000 .and. &
            muse(k) .and. muse(l)
