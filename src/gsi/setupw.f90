@@ -518,11 +518,13 @@ subroutine setupw(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsav
            duplogic_tmp = duplogic_1
         end if
         if (twodvar_regional .or. (l_rtma3d .and. rtmasfctype) ) then
-           duplogic=(duplogic_1.or.duplogic_2).and.&
+!          duplogic=(duplogic_1.or.duplogic_2).and.&
+           duplogic=(duplogic_tmp).and.&
            data(ier,k) < r1000 .and. data(ier,l) < r1000 .and. &
            muse(k) .and. muse(l)
         else
-           duplogic=(duplogic_1.or.duplogic_2).and.&
+!          duplogic=(duplogic_1.or.duplogic_2).and.&
+           duplogic=(duplogic_tmp).and.&
            data(ipres,k) == data(ipres,l) .and. &
            data(ier,k) < r1000 .and. data(ier,l) < r1000 .and. &
            muse(k) .and. muse(l)
