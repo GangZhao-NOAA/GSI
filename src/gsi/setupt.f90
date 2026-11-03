@@ -46,7 +46,7 @@ subroutine setupt(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsav
   use nc_diag_read_mod, only: nc_diag_read_init, nc_diag_read_get_dim, nc_diag_read_close
 
   use qcmod, only: npres_print,dfact,dfact1,ptop,pbot,buddycheck_t
-  use qcmod, only: njqc,vqc,nvqc
+  use qcmod, only: njqc,vqc,nvqc,epsdup,epsdup_2
 
   use oneobmod, only: oneobtest
   use oneobmod, only: maginnov
@@ -232,6 +232,9 @@ subroutine setupt(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsav
 !   2023-03-21 Draper added option to interpolate screen-level T from model 2m output.
 !              (hofx_2m_sfcfile)
 !   2024-10-31  zhao    - added code to use valley-map data for 3DRTMA (l_rtma3d = .TRUE.)
+!   2026-09-16  pondeca/morris - duplogic enhanced to allow for slight lat/lon differences b/w nearby
+!                                stations, add a new station id match option, and use true lat/lon
+!                                values (ilate/ilone) instead of grid-relative values (ilat/ilon)
 !
 ! !REMARKS:
 !   language: f90
@@ -248,6 +251,7 @@ subroutine setupt(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsav
   real(r_kind),parameter:: r0_7=0.7_r_kind
   real(r_kind),parameter:: r8 = 8.0_r_kind
   real(r_kind),parameter:: r3p5 = 3.5_r_kind
+  character(1),parameter::cblank=' '
 
   character(len=*),parameter :: myname='setupt'
 
@@ -313,12 +317,17 @@ subroutine setupt(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsav
   character(8) c_prvstg,c_sprvstg
   real(r_double) r_prvstg,r_sprvstg
 
+  integer(i_kind) nlen,nlen2
+  real(r_double) rstn1,rstn2
+  character(8) cstn1,cstn2
+
   logical,dimension(nobs):: luse,muse
   integer(i_kind),dimension(nobs):: ioid ! initial (pre-distribution) obs ID
   logical sfctype, landsfctype
   logical iqtflg
   logical aircraftobst
-  logical duplogic
+  logical duplogic,rtmasfctype
+  logical duplogic_1,duplogic_2
 
   logical:: in_curbin, in_anybin, save_jacobian
   logical proceed
@@ -335,6 +344,9 @@ subroutine setupt(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsav
   equivalence(rstation_id,station_id)
   equivalence(r_prvstg,c_prvstg)
   equivalence(r_sprvstg,c_sprvstg)
+
+  equivalence(rstn1,cstn1)
+  equivalence(rstn2,cstn2)
 
   real(r_kind),allocatable,dimension(:,:,:  ) :: ges_ps
   real(r_kind),allocatable,dimension(:,:,:,:) :: ges_u
@@ -437,6 +449,7 @@ subroutine setupt(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsav
   do i=1,nobs
      muse(i)=nint(data(iuse,i)) <= jiter .and. nint(data(iqc,i)) < 8
   end do
+
 !  If HD raobs available move prepbufr version to monitor
   if(nhdt > 0)then
      iprev_station=0
@@ -468,19 +481,32 @@ subroutine setupt(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsav
 !  handle multiple reported data at a station
   hr_offset=min_offset/60.0_r_kind
   dup=one
-  do k=1,nobs
+  kloop: do k=1,nobs
+     if (.not. muse(k)) cycle kloop
      ikx=nint(data(ikxx,k))
      itype=ictype(ikx)
+     rtmasfctype =(itype>=180 .and. itype<=195)
      landsfctype =( itype==181 .or. itype==183 .or. itype==187 )
-     do l=k+1,nobs
-        if (twodvar_regional .or. (hofx_2m_sfcfile .and. landsfctype) ) then
-           duplogic=data(ilat,k) == data(ilat,l) .and.  &
-           data(ilon,k) == data(ilon,l) .and.  &
+     rstn1 = data(id,k)
+     nlen=0; do i=1,8 ; if (cstn1(i:i)==cblank) exit ; nlen=nlen+1 ; enddo !accounts for mesonet station ids that end with
+                                                                           !an "a" in the eight position preceeded by blanks
+     lloop: do l=k+1,nobs
+        if (.not. muse(l)) cycle lloop
+        rstn2 = data(id,l)
+        nlen2=0; do i=1,8 ; if (cstn2(i:i)==cblank) exit ; nlen2=nlen2+1 ; enddo
+        duplogic_1=abs(data(ilate,k)-data(ilate,l))<=epsdup .and.  &   !duplicate stations can have lat/lon specs
+        abs(data(ilone,k)-data(ilone,l))<=epsdup                       !differing by as much as epsdup (~0.005 deg)
+
+        duplogic_2=abs(data(ilate,k)-data(ilate,l))<=epsdup_2 .and.  & !station can appear as TAC station and BUFR station
+        abs(data(ilone,k)-data(ilone,l))<=epsdup_2 .and.  &            !with lat/lon specs differing by as much as epsdup_2 (~0.1 deg)
+        (nlen==nlen2.and.cstn1(1:nlen)==cstn2(1:nlen))                 !this logic addresses this situation, but only when the station ids
+                                                                       !are the same. when they are different, the duplicate obs will slip in
+        if (twodvar_regional .or. (l_rtma3d .and. rtmasfctype) .or. (hofx_2m_sfcfile .and. landsfctype) ) then
+           duplogic=(duplogic_1.or.duplogic_2).and.&
            data(ier,k) < r1000 .and. data(ier,l) < r1000 .and. &
            muse(k) .and. muse(l)
-         else
-           duplogic=data(ilat,k) == data(ilat,l) .and.  &
-           data(ilon,k) == data(ilon,l) .and.  &
+        else
+           duplogic=(duplogic_1.or.duplogic_2).and.&
            data(ipres,k) == data(ipres,l) .and. &
            data(ier,k) < r1000 .and. data(ier,l) < r1000 .and. &
            muse(k) .and. muse(l)
@@ -492,6 +518,7 @@ subroutine setupt(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsav
                   muse(l)=.false.
               else
                   muse(k)=.false.
+                  exit lloop
               endif
 !              write(*,'(a,2f10.5,2I8,2L10)') 'chech obs time==',data(itime,k)-hr_offset,data(itime,l)-hr_offset,k,l,&
 !                           muse(k),muse(l)
@@ -501,8 +528,8 @@ subroutine setupt(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsav
               dup(l)=dup(l)+one-tfact*tfact*(one-dfact)
            endif
         end if
-     end do
-  end do
+     end do lloop
+  end do kloop
 
 ! Run a buddy-check
 ! Note: buddy check crashes for hofx_2m_sfcfile option.

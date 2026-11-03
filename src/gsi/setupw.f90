@@ -48,7 +48,7 @@ subroutine setupw(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsav
   use nc_diag_read_mod, only: nc_diag_read_init, nc_diag_read_get_dim, nc_diag_read_close
   use gsi_4dvar, only: nobs_bins,hr_obsbin,min_offset
   use qcmod, only: npres_print,ptop,pbot,dfact,dfact1,qc_satwnds,njqc,vqc
-  use qcmod, only: nvqc
+  use qcmod, only: nvqc,epsdup,epsdup_2
   use oneobmod, only: oneobtest,oneob_type,magoberr,maginnov 
   use gridmod, only: get_ijk,nsig,twodvar_regional,regional,wrf_nmm_regional,&
       rotate_wind_xy2ll,pt_ll,fv3_regional
@@ -65,7 +65,7 @@ subroutine setupw(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsav
   use converr_uv, only: ptabl_uv
   use converr, only: ptabl
   use rapidrefresh_cldsurf_mod, only: l_PBL_pseudo_SurfobsUV, pblH_ration,pps_press_incr
-  use rapidrefresh_cldsurf_mod, only: l_closeobs, i_gsdqc
+  use rapidrefresh_cldsurf_mod, only: l_closeobs, i_gsdqc, l_rtma3d
 
   use m_dtime, only: dtime_setup, dtime_check
 
@@ -224,6 +224,9 @@ subroutine setupw(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsav
 !                         in offline observation quality control program (AutoObsQC) 
 !                         for 3D-RTMA (if l_obsprvdiag is true).
 !   2022-04-16  pondeca - write bias correction multiplicative factor for mesonet winds, windbiasfact, to diagnostic file
+!   2026-09-16  pondeca/morris - duplogic enhanced to allow for slight lat/lon differences b/w nearby
+!                                stations, add a new station id match option, and use true lat/lon
+!                                values (ilate/ilone) instead of grid-relative values (ilat/ilon)
 !
 ! REMARKS:
 !   language: f90
@@ -245,8 +248,8 @@ subroutine setupw(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsav
   real(r_kind),parameter:: r200=200.0_r_kind
   real(r_kind),parameter:: r360=360.0_r_kind
   real(r_kind),parameter:: r0_1_bmiss=0.1_r_kind*bmiss
-
   character(len=*),parameter:: myname='setupw'
+  character(1),parameter::cblank=' '
 
 ! Declare external calls for code analysis
   external:: intrp2a11,tintrp2a1,tintrp2a11
@@ -305,6 +308,10 @@ subroutine setupw(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsav
   character(8) c_prvstg,c_sprvstg
   real(r_double) r_prvstg,r_sprvstg
 
+  integer(i_kind) nlen,nlen2
+  real(r_double) rstn1,rstn2
+  character(8) cstn1,cstn2
+
   type(sparr2) :: dhx_dx_u, dhx_dx_v
   integer(i_kind) :: iz, u_ind, v_ind, nnz, nind
   real(r_kind) :: delz
@@ -312,7 +319,8 @@ subroutine setupw(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsav
   logical,dimension(nobs):: luse,muse
   logical:: muse_u,muse_v
   integer(i_kind),dimension(nobs):: ioid ! initial (pre-distribution) obs ID
-  logical lowlevelsat,duplogic
+  logical lowlevelsat,duplogic,rtmasfctype
+  logical duplogic_1,duplogic_2
   logical msonetob
   logical proceed
 
@@ -329,10 +337,12 @@ subroutine setupw(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsav
   real(r_kind) :: hr_offset
   real(r_kind) :: magomb
 
-
   equivalence(rstation_id,station_id)
   equivalence(r_prvstg,c_prvstg)
   equivalence(r_sprvstg,c_sprvstg)
+
+  equivalence(rstn1,cstn1)
+  equivalence(rstn2,cstn2)
 
   real(r_kind),allocatable,dimension(:,:,:  ) :: ges_ps
   real(r_kind),allocatable,dimension(:,:,:  ) :: ges_z
@@ -456,16 +466,31 @@ subroutine setupw(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsav
 !  handle multiple-report observations at a station
   hr_offset=min_offset/60.0_r_kind
   dup=one
-  do k=1,nobs
-     do l=k+1,nobs
-        if (twodvar_regional) then
-           duplogic=data(ilat,k) == data(ilat,l) .and.  &
-           data(ilon,k) == data(ilon,l) .and.  &
+  kloop: do k=1,nobs
+     if (.not. muse(k)) cycle kloop
+     ikx=nint(data(ikxx,k))
+     itype=ictype(ikx)
+     rtmasfctype =(itype>=280 .and. itype<=295)
+     rstn1 = data(id,k)
+     nlen=0; do i=1,8 ; if (cstn1(i:i)==cblank) exit ; nlen=nlen+1 ; enddo !accounts for mesonet station ids that end with
+                                                                           !an "a" in the eight position preceeded by blanks
+     lloop: do l=k+1,nobs
+        if (.not. muse(l)) cycle lloop
+        rstn2 = data(id,l)
+        nlen2=0; do i=1,8 ; if (cstn2(i:i)==cblank) exit ; nlen2=nlen2+1 ; enddo
+        duplogic_1=abs(data(ilate,k)-data(ilate,l))<=epsdup .and.  &   !duplicate stations can have lat/lon specs
+        abs(data(ilone,k)-data(ilone,l))<=epsdup                       !differing by as much as epsdup (~0.005 deg)
+
+        duplogic_2=abs(data(ilate,k)-data(ilate,l))<=epsdup_2 .and.  & !station can appear as TAC station and BUFR station
+        abs(data(ilone,k)-data(ilone,l))<=epsdup_2 .and.  &            !with lat/lon specs differing by as much as epsdup_2 (~0.1 deg)
+        (nlen==nlen2.and.cstn1(1:nlen)==cstn2(1:nlen))                 !this logic addresses this situation, but only when the station ids
+                                                                       !are the same. when they are different, the duplicate obs will slip in
+        if (twodvar_regional .or. (l_rtma3d .and. rtmasfctype) ) then
+           duplogic=(duplogic_1.or.duplogic_2).and.&
            data(ier,k) < r1000 .and. data(ier,l) < r1000 .and. &
            muse(k) .and. muse(l)
-         else
-           duplogic=data(ilat,k) == data(ilat,l) .and.  &
-           data(ilon,k) == data(ilon,l) .and.  &
+        else
+           duplogic=(duplogic_1.or.duplogic_2).and.&
            data(ipres,k) == data(ipres,l) .and. &
            data(ier,k) < r1000 .and. data(ier,l) < r1000 .and. &
            muse(k) .and. muse(l)
@@ -477,6 +502,7 @@ subroutine setupw(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsav
                   muse(l)=.false.
               else
                   muse(k)=.false.
+                  exit lloop
               endif
 !              write(*,'(a,2f10.5,2I8,2L10)') 'chech wind obs time==',&
 !              data(itime,k)-hr_offset,data(itime,l)-hr_offset,k,l,&
@@ -487,8 +513,8 @@ subroutine setupw(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsav
               dup(l)=dup(l)+one-tfact*tfact*(one-dfact)
            endif
         end if
-     end do
-  end do
+     end do lloop
+  end do kloop
 
   call dtime_setup()
   num_bad_ikx=0

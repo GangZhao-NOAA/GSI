@@ -209,6 +209,7 @@ module qcmod
   public :: nrand 
   public :: airs_cads, cris_cads, iasi_cads, iasing_cads
   public :: sfcwndob_biasc
+  public :: epsdup, epsdup_2
 
   logical nlnqc_iter,njqc,vqc,nvqc,hub_norm
   logical noiqc
@@ -235,6 +236,7 @@ module qcmod
   real(r_kind) lat_c
   real(r_kind) pvis,pcldch,scale_cv,estvisoe,estcldchoe,vis_thres,cldch_thres
   real(r_kind),allocatable,dimension(:)::ptop,pbot,ptopq,pbotq,ptopo3,pboto3
+  real(r_kind) epsdup,epsdup_2
 
 ! Declare variables for QC with Tz retrieval
   real(r_kind), private :: e_ts,e_ta,e_qa
@@ -479,6 +481,9 @@ contains
     cris_cads   = .false.
     iasi_cads   = .false.
     iasing_cads = .false.
+
+    epsdup   = zero ! Duplicate station matching based solely on lat/lon metadata
+    epsdup_2 = zero ! Duplicate station matching based on station ID
 
     return
   end subroutine init_qcvars

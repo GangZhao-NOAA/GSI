@@ -32,6 +32,9 @@ subroutine setupmxtm(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diag
 !                       . Remove my_node with corrected typecast().
 !   2018-01-08  pondeca - addd option l_closeobs to use closest obs to analysis
 !                                     time in analysis
+!   2026-09-16  pondeca/morris - duplogic enhanced to allow for slight lat/lon differences b/w nearby
+!                                stations, add a new station id match option, and use true lat/lon
+!                                values (ilate/ilone) instead of grid-relative values (ilat/ilon)
 !
 !   input argument list:
 !     lunin    - unit from which to read observations
@@ -76,7 +79,7 @@ subroutine setupmxtm(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diag
   use constants, only: zero,tiny_r_kind,one,half,one_tenth,r10,r1000,wgtlim, &
             two,cg_term,huge_single,three
   use jfunc, only: jiter,last,miter
-  use qcmod, only: dfact,dfact1,npres_print
+  use qcmod, only: dfact,dfact1,npres_print,epsdup,epsdup_2
   use convinfo, only: nconvtype,cermin,cermax,cgross,cvar_b,cvar_pg,ictype
   use convinfo, only: icsubtype
   use m_dtime, only: dtime_setup, dtime_check
@@ -101,7 +104,7 @@ subroutine setupmxtm(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diag
 
 ! Declare local parameters
   real(r_kind),parameter:: r0_7=0.7_r_kind
-
+  character(1),parameter::cblank=' '
   character(len=*),parameter:: myname='setupmxtm'
 
 ! Declare local variables
@@ -136,6 +139,11 @@ subroutine setupmxtm(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diag
   character(8),allocatable,dimension(:):: cprvstg,csprvstg
   character(8) c_prvstg,c_sprvstg
   real(r_double) r_prvstg,r_sprvstg
+  logical duplogic,duplogic_1,duplogic_2
+
+  integer(i_kind) nlen,nlen2
+  real(r_double) rstn1,rstn2
+  character(8) cstn1,cstn2
 
   logical:: in_curbin, in_anybin
   type(mxtmNode), pointer:: my_head
@@ -143,10 +151,12 @@ subroutine setupmxtm(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diag
   type(obs_diags), pointer:: my_diagLL
   real(r_kind) :: hr_offset
 
-
   equivalence(rstation_id,station_id)
   equivalence(r_prvstg,c_prvstg)
   equivalence(r_sprvstg,c_sprvstg)
+
+  equivalence(rstn1,cstn1) 
+  equivalence(rstn2,cstn2)
 
   real(r_kind),allocatable,dimension(:,:,:) :: ges_ps     !will need at some point
   real(r_kind),allocatable,dimension(:,:,:) :: ges_z      !will probably need at some point
@@ -199,20 +209,37 @@ subroutine setupmxtm(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diag
   end do
 
 ! Check for duplicate observations at same location
-  dup=one
   hr_offset=min_offset/60.0_r_kind
-  do k=1,nobs
-     do l=k+1,nobs
-        if(data(ilat,k) == data(ilat,l) .and.  &
-           data(ilon,k) == data(ilon,l) .and.  &
-           data(ier,k) < r1000 .and. data(ier,l) < r1000 .and. &
-           muse(k) .and. muse(l))then
+  dup=one
+  kloop: do k=1,nobs
+     if (.not. muse(k)) cycle kloop
+     ikx=nint(data(ikxx,k))
+     rstn1 = data(id,k)
+     nlen=0; do i=1,8 ; if (cstn1(i:i)==cblank) exit ; nlen=nlen+1 ; enddo !accounts for mesonet station ids that end with
+                                                                           !an "a" in the eight position preceeded by blanks
+     lloop: do l=k+1,nobs
+        if (.not. muse(l)) cycle lloop
+        rstn2 = data(id,l)
+        nlen2=0; do i=1,8 ; if (cstn2(i:i)==cblank) exit ; nlen2=nlen2+1 ; enddo
+        duplogic_1=abs(data(ilate,k)-data(ilate,l))<=epsdup .and.  &   !duplicate stations can have lat/lon specs
+        abs(data(ilone,k)-data(ilone,l))<=epsdup                       !differing by as much as epsdup (~0.005 deg)
 
+        duplogic_2=abs(data(ilate,k)-data(ilate,l))<=epsdup_2 .and.  & !station can appear as TAC station and BUFR station
+        abs(data(ilone,k)-data(ilone,l))<=epsdup_2 .and.  &            !with lat/lon specs differing by as much as epsdup_2 (~0.1 deg)
+        (nlen==nlen2.and.cstn1(1:nlen)==cstn2(1:nlen))                 !this logic addresses this situation, but only when the station ids
+                                                                       !are the same. when they are different, the duplicate obs will slip in 
+
+        duplogic=(duplogic_1.or.duplogic_2).and.&
+        data(ier,k) < r1000 .and. data(ier,l) < r1000 .and. &
+        muse(k) .and. muse(l)
+
+        if (duplogic) then
            if(l_closeobs) then
               if(abs(data(itime,k)-hr_offset)<abs(data(itime,l)-hr_offset)) then
                   muse(l)=.false.
               else
                   muse(k)=.false.
+                  exit lloop
               endif
            else
               tfact=min(one,abs(data(itime,k)-data(itime,l))/dfact1)
@@ -220,9 +247,8 @@ subroutine setupmxtm(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diag
               dup(l)=dup(l)+one-tfact*tfact*(one-dfact)
            end if
         end if
-     end do
-  end do
-
+     end do lloop
+  end do kloop
 
 ! If requested, save select data for output to diagnostic file
   if(conv_diagsave)then

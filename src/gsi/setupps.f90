@@ -85,6 +85,9 @@ subroutine setupps(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsa
 !                         information in diagonostic file, which is used
 !                         in offline observation quality control program (AutoObsQC) 
 !                         for 3D-RTMA (if l_obsprvdiag is true).
+!   2026-09-16  pondeca/morris - duplogic enhanced to allow for slight lat/lon differences b/w nearby
+!                                stations, add a new station id match option, and use true lat/lon
+!                                values (ilate/ilone) instead of grid-relative values (ilat/ilon)
 !
 !
 !   input argument list:
@@ -132,7 +135,7 @@ subroutine setupps(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsa
              huge_r_kind,tiny_r_kind,two,huge_single, &
              r1000,wgtlim,tiny_single,r10,three
   use jfunc, only: jiter,last,jiterstart,miter
-  use qcmod, only: dfact,dfact1,npres_print,vqc,nvqc
+  use qcmod, only: dfact,dfact1,npres_print,vqc,nvqc,epsdup,epsdup_2
   use guess_grids, only: hrdifsig,ges_lnprsl,nfldsig,ntguessig
   use convinfo, only: nconvtype,cermin,cermax,cgross,cvar_b,cvar_pg,ictype,icsubtype
   use convinfo, only: ibeta,ikapa 
@@ -160,6 +163,7 @@ subroutine setupps(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsa
 ! Declare local parameters
   character(len=*),parameter:: myname='setupps'
   real(r_kind),parameter:: r0_7=0.7_r_kind
+  character(1),parameter::cblank=' '
 
 ! Declare external calls for code analysis
   external:: intrp2a
@@ -201,6 +205,11 @@ subroutine setupps(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsa
   character(8) c_prvstg,c_sprvstg
   real(r_double) r_prvstg,r_sprvstg
   real(r_kind) :: hr_offset
+  logical duplogic,duplogic_1,duplogic_2
+
+  integer(i_kind) nlen,nlen2
+  real(r_double) rstn1,rstn2
+  character(8) cstn1,cstn2
 
   logical:: in_curbin, in_anybin, save_jacobian
   type(psNode),pointer:: my_head
@@ -210,7 +219,10 @@ subroutine setupps(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsa
   equivalence(rstation_id,station_id)
   equivalence(r_prvstg,c_prvstg)
   equivalence(r_sprvstg,c_sprvstg)
-  
+
+  equivalence(rstn1,cstn1)
+  equivalence(rstn2,cstn2)
+
   real(r_kind),allocatable,dimension(:,:,:  ) :: ges_ps
   real(r_kind),allocatable,dimension(:,:,:  ) :: ges_z
   real(r_kind),allocatable,dimension(:,:,:,:) :: ges_tv
@@ -296,20 +308,39 @@ subroutine setupps(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsa
      end do
   end if
 
+! Check for duplicate observations at same location
   hr_offset=min_offset/60.0_r_kind
-!  Check for duplicate observations at same location
   dup=one
-  do k=1,nobs
-     do l=k+1,nobs
-        if(data(ilat,k) == data(ilat,l) .and. &
-           data(ilon,k) == data(ilon,l) .and. &
-           data(ier,k) < r1000 .and. data(ier,l) < r1000 .and. &
-           muse(k) .and. muse(l))then
+  kloop: do k=1,nobs
+     if (.not. muse(k)) cycle kloop
+     ikx=nint(data(ikxx,k))
+     itype=ictype(ikx)
+     rstn1 = data(id,k)
+     nlen=0; do i=1,8 ; if (cstn1(i:i)==cblank) exit ; nlen=nlen+1 ; enddo !accounts for mesonet station ids that end with
+                                                                           !an "a" in the eight position preceeded by blanks
+     lloop: do l=k+1,nobs
+        if (.not. muse(l)) cycle lloop
+        rstn2 = data(id,l)
+        nlen2=0; do i=1,8 ; if (cstn2(i:i)==cblank) exit ; nlen2=nlen2+1 ; enddo
+        duplogic_1=abs(data(ilate,k)-data(ilate,l))<=epsdup .and.  &   !duplicate stations can have lat/lon specs
+        abs(data(ilone,k)-data(ilone,l))<=epsdup                       !differing by as much as epsdup (~0.005 deg)
+
+        duplogic_2=abs(data(ilate,k)-data(ilate,l))<=epsdup_2 .and.  & !station can appear as TAC station and BUFR station
+        abs(data(ilone,k)-data(ilone,l))<=epsdup_2 .and.  &            !with lat/lon specs differing by as much as epsdup_2 (~0.1 deg)
+        (nlen==nlen2.and.cstn1(1:nlen)==cstn2(1:nlen))                 !this logic addresses this situation, but only when the station ids
+                                                                       !are the same. when they are different, the duplicate obs will slip in 
+
+        duplogic=(duplogic_1.or.duplogic_2).and.&
+        data(ier,k) < r1000 .and. data(ier,l) < r1000 .and. &
+        muse(k) .and. muse(l)
+
+        if (duplogic) then
            if(l_closeobs) then
               if(abs(data(itime,k)-hr_offset)<abs(data(itime,l)-hr_offset)) then
                   muse(l)=.false.
               else
                   muse(k)=.false.
+                  exit lloop
               endif
            else
               tfact=min(one,abs(data(itime,k)-data(itime,l))/dfact1)
@@ -317,9 +348,8 @@ subroutine setupps(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsa
               dup(l)=dup(l)+one-tfact*tfact*(one-dfact)
            endif
         end if
-     end do
-  end do
-
+     end do lloop
+  end do kloop
 
 ! If requested, save select data for output to diagnostic file
 
