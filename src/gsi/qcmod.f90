@@ -147,6 +147,28 @@ module qcmod
 !                        criteria
 !   def nrand        - hilbert premeter
 !
+! following used for enhanced duplicate observation check:
+!   def epsdup                - tolerance of differences in lat or lon of obs location in duplicate obs check,
+!                               used in Duplicate station matching based solely on lat/lon metadata
+!   def epsdup_2              - 2nd tolerance of differences in lat or lon,
+!                               used in Duplicate station matching based on station ID
+!   def i_dupobschk_enhanced  - controlling the usage of enhanced duplicate obs check
+!                               < 0: not using Duplicate station matching based on station ID,
+!                                    only duplicate obs matching based on location (lat/lon & pres if avialble)
+!                                    (default: -1 to disable the duplicate obs matching with station ID)
+!                               >=0: using Duplicate station matching based on both of station ID
+!                                    (duplogic_2) and location (duplogic_1) for various types of obs
+!                               = 1: using Duplicate station matching based on both of station ID and location
+!                                    for surface obs only, for other type of obs, duplicate matching with
+!                                    location only.
+!                                    Note: a. this dependency on obs-type was implmented in subroutines
+!                                             of setupt/q/w only for now.
+!                                          b. setting to 1 is recommended to enable the matching with
+!                                             station IDs for surface type of observations in (3D)RTMA.
+!    def l_print_obsqc        - logical, to set verrbose mode controlling less/more printout
+!                               = .false. verbose mode off (less printout, as default)
+!                               = .true., verbose mode on (more printout for debugging)
+!
 ! attributes:
 !   language: f90
 !   machine:  ibm rs/6000 sp
@@ -210,6 +232,8 @@ module qcmod
   public :: airs_cads, cris_cads, iasi_cads, iasing_cads
   public :: sfcwndob_biasc
   public :: epsdup, epsdup_2
+  public :: i_dupobschk_enhanced
+  public :: l_print_obsqc
 
   logical nlnqc_iter,njqc,vqc,nvqc,hub_norm
   logical noiqc
@@ -237,6 +261,8 @@ module qcmod
   real(r_kind) pvis,pcldch,scale_cv,estvisoe,estcldchoe,vis_thres,cldch_thres
   real(r_kind),allocatable,dimension(:)::ptop,pbot,ptopq,pbotq,ptopo3,pboto3
   real(r_kind) epsdup,epsdup_2
+  integer(i_kind) :: i_dupobschk_enhanced
+  logical         :: l_print_obsqc
 
 ! Declare variables for QC with Tz retrieval
   real(r_kind), private :: e_ts,e_ta,e_qa
@@ -482,8 +508,10 @@ contains
     iasi_cads   = .false.
     iasing_cads = .false.
 
-    epsdup   = tiny(1.0_r_kind) ! Duplicate station matching based solely on lat/lon metadata
-    epsdup_2 = tiny(1.0_r_kind) ! Duplicate station matching based on station ID
+    epsdup   = tiny_r_kind      ! tolerance used for Duplicate station matching based solely on lat/lon metadata
+    epsdup_2 = tiny_r_kind      ! tolerance 2 for Duplicate station matching based on station ID
+    i_dupobschk_enhanced = -1   ! disable the duplicate obs matching with station ID, only with obs locations
+    l_print_obsqc = .false.     ! verbose mode off in obs-qc check
 
     return
   end subroutine init_qcvars

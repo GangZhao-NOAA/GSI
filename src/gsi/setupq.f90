@@ -167,6 +167,7 @@ subroutine setupq(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsav
   use constants, only: huge_single,wgtlim,three
   use constants, only: tiny_r_kind,five,half,two,huge_r_kind,r0_01
   use qcmod, only: npres_print,ptopq,pbotq,dfact,dfact1,njqc,vqc,nvqc,epsdup,epsdup_2
+  use qcmod, only: i_dupobschk_enhanced, l_print_obsqc
   use jfunc, only: jiter,last,jiterstart,miter,superfact,limitqobs,hofx_2m_sfcfile
   use convinfo, only: nconvtype,cermin,cermax,cgross,cvar_b,cvar_pg,ictype
   use convinfo, only: ibeta,ikapa
@@ -270,7 +271,7 @@ subroutine setupq(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsav
   integer(i_kind),dimension(nobs):: ioid ! initial (pre-distribution) obs ID
 
   logical duplogic,rtmasfctype
-  logical duplogic_1,duplogic_2, duplogic_tmp
+  logical duplogic_1,duplogic_2
 
   real(r_double),   dimension(nobs) :: rstn
   character(len=8), dimension(nobs) :: cstn
@@ -278,6 +279,7 @@ subroutine setupq(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsav
   logical                           :: l_print_loc
   integer(i_kind),  dimension(nobs) :: l_dupchk_2
   real(r_kind)                      :: diff_late, diff_lone
+  real(r_kind),     dimension(nobs) :: obtime_offset
 
   logical:: in_curbin, in_anybin, save_jacobian
   type(qNode),pointer:: my_head
@@ -325,7 +327,7 @@ subroutine setupq(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsav
 ! If require guess vars available, extract from bundle ...
   call init_vars_
 
-  l_print_loc = .false.
+  l_print_loc = l_print_obsqc
 !*******************************************************************************
 ! Read and reformat observations in work arrays.
   read(lunin)data,luse,ioid
@@ -395,17 +397,24 @@ subroutine setupq(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsav
 
   hr_offset=min_offset/60.0_r_kind
   dup=one
+  obtime_offset(1:nobs) = abs(data(itime,1:nobs)-hr_offset)
 
 ! Get the main station ID (the string prededing the first blank in original station ID string)  
 ! Purpose: for mesonet station ids of the form "STNIxxxa", the trailing character "a" 
 !          in position 8 (preceded by blanks) is intentionally excluded from the comparison.
   rstn(1:nobs) = data(id, 1:nobs)
   cstn = transfer(rstn, cstn)
-  l_dupchk_2(1:nobs) = .false.
+  if ( i_dupobschk_enhanced >= 0 ) then
+     l_dupchk_2(1:nobs) = .true.          ! dup obs matching with station ID
+  else if ( i_dupobschk_enhanced < 0 ) then
+     l_dupchk_2(1:nobs) = .false.         ! No dup obs matching with station ID
+  end if
   stn_kloop: do k=1,nobs
      ikx=nint(data(ikxx,k))
      itype=ictype(ikx)
-     l_dupchk_2(k) = ((itype >= 180 .and. itype <= 199) .or. (itype >= 280 .and. itype <= 299))
+     if ( i_dupobschk_enhanced == 1 ) then  ! dup obs matching with station ID for surface obs only
+        l_dupchk_2(k) = ((itype >= 180 .and. itype <= 199) .or. (itype >= 280 .and. itype <= 299)) 
+     end if
      stnid_main(k) = adjustl(cstn(k))        ! removing the leading space(s)
 !    if first blank was detected, set the following element(s) be space(s)
      stn_iloop: do i=1,7
@@ -435,23 +444,19 @@ subroutine setupq(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsav
         duplogic_1=diff_late<=epsdup .and.    & !duplicate stations can have lat/lon specs
                    diff_lone<=epsdup            !differing by as much as epsdup (~0.005 deg)
 
+        duplogic_2 = .false.                    ! initialised as no matching with sation ID
         if (l_dupchk_2(k) .and. l_dupchk_2(l)) then
            duplogic_2=diff_late<=epsdup_2 .and.  & !station can appear as TAC station and BUFR station
                       diff_lone<=epsdup_2 .and.  & !with lat/lon specs differing by as much as epsdup_2 (~0.1 deg)
                       stnid_main(k)==stnid_main(l) !this logic addresses this situation, but only when the station ids
                                                    !are the same. when they are different, the duplicate obs will slip in
-           duplogic_tmp = duplogic_1.or.duplogic_2
-        else
-           duplogic_tmp = duplogic_1
         end if
         if (twodvar_regional .or. (l_rtma3d .and. rtmasfctype) .or. (hofx_2m_sfcfile .and. landsfctype) ) then
-!          duplogic=(duplogic_1.or.duplogic_2).and.&
-           duplogic=(duplogic_tmp).and.&
+           duplogic=(duplogic_1.or.duplogic_2).and.&
            data(ier,k) < r1000 .and. data(ier,l) < r1000 .and. &
            muse(k) .and. muse(l)
         else
-!          duplogic=(duplogic_1.or.duplogic_2).and.&
-           duplogic=(duplogic_tmp).and.&
+           duplogic=(duplogic_1.or.duplogic_2).and.&
            data(ipres,k) == data(ipres,l) .and. &
            data(ier,k) < r1000 .and. data(ier,l) < r1000 .and. &
            muse(k) .and. muse(l)
@@ -459,7 +464,8 @@ subroutine setupq(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsav
 
         if (duplogic) then
            if(l_closeobs) then
-              if(abs(data(itime,k)-hr_offset)<abs(data(itime,l)-hr_offset)) then
+!             if(abs(data(itime,k)-hr_offset)<abs(data(itime,l)-hr_offset)) then
+              if(obtime_offset(k) < obtime_offset(l)) then
                   muse(l)=.false.
               else
                   muse(k)=.false.
