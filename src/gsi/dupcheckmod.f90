@@ -96,22 +96,44 @@ subroutine dupcheck(nobs, nele, data, muse, dup, &
 
   integer(i_kind)            :: i, k, l, nlen, nlen2, ipres_loc
   real(r_kind)               :: hr_offset, tfact
-  real(r_double)             :: rstn1, rstn2
-  character(len=8)           :: cstn1, cstn2
-  character(len=1), parameter :: cblank = ' '
+  real(r_double),   dimension(nobs) :: rstn
+  character(len=8), dimension(nobs) :: cstn
+  character(len=8), dimension(nobs) :: stnid_main
+  character(len=8)                  :: cstn_tmp
+  character(len=1), parameter       :: cblank = ' '
   logical :: duplogic, duplogic_1, duplogic_2, apply_pres_k
+  logical :: l_print_loc
 
-  equivalence(rstn1, cstn1)
-  equivalence(rstn2, cstn2)
+! equivalence(rstn, cstn)           ! equivalence is obsolete in modern FORTRAN 
 
   if (present(ipres)) then
      ipres_loc = ipres
   else
      ipres_loc = 0
   end if
+  l_print_loc = .false.
 
   hr_offset = real(min_offset/60.0_r_kind,r_kind)
   dup = one
+
+! Get the main station ID (the string prededing the first blank in original station ID string)  
+! Purpose: for mesonet station ids of the form "STNIxxxa", the trailing character "a" 
+!          in position 8 (preceded by blanks) is intentionally excluded from the comparison.
+  rstn(1:nobs) = data(id, 1:nobs)
+  cstn = transfer(rstn, cstn)
+  do k=1,nobs
+     cstn_tmp = adjustl(cstn(k))        ! removing the leading space(s)
+!    if first blank was detected, set the following element(s) be space(s)
+     do i=1,7
+        if (cstn_tmp(i:i) == cblank) then
+           cstn_tmp(i+1:i+1) = cblank
+        end if
+     end do
+     stnid_main(k) = cstn_tmp
+     if (l_print_loc) then
+        write(6,'(1x,A9,A8,A4,A8,4x,I8.8)') 'ID Check:', adjustl(cstn(k)), '===>', stnid_main(k), k
+     end if
+  end do
 
   kloop: do k=1,nobs
 
@@ -123,28 +145,15 @@ subroutine dupcheck(nobs, nele, data, muse, dup, &
        apply_pres_k = .false.
     end if
 
-    rstn1 = data(id,k)
-    nlen=0
-    do i=1,8
-       if (cstn1(i:i)==cblank) exit    !stop at first blank; for mesonet station ids of the form
-       nlen=nlen+1                      !"STNIxxxxa" the trailing "a" in position 8 (preceded by blanks)
-    enddo                               !is intentionally excluded from the comparison
-
     lloop: do l=k+1,nobs
-       rstn2 = data(id,l)
-       nlen2=0
-       do i=1,8
-          if (cstn2(i:i)==cblank) exit
-          nlen2=nlen2+1
-       enddo
 
        duplogic_1=abs(data(ilate,k)-data(ilate,l))<=epsdup .and.  &  !duplicate stations can have lat/lon specs
-       abs(data(ilone,k)-data(ilone,l))<=epsdup                      !differing by as much as epsdup (~0.005 deg)
+                  abs(data(ilone,k)-data(ilone,l))<=epsdup           !differing by as much as epsdup (~0.005 deg)
 
        duplogic_2=abs(data(ilate,k)-data(ilate,l))<=epsdup_2 .and.  & !station can appear as TAC station and BUFR station
-       abs(data(ilone,k)-data(ilone,l))<=epsdup_2 .and.  &            !with lat/lon specs differing by as much as epsdup_2 (~0.1 deg)
-       (nlen > 0 .and. nlen==nlen2.and.cstn1(1:nlen)==cstn2(1:nlen))  !this logic addresses this situation, but only when the station ids
-                                                                       !are the same. when they are different, the duplicate obs will slip in
+                  abs(data(ilone,k)-data(ilone,l))<=epsdup_2 .and.  & !with lat/lon specs differing by as much as epsdup_2 (~0.1 deg)
+                  stnid_main(k)==stnid_main(l)                        !this logic addresses this situation, but only when the station ids
+                                                                      !are the same. when they are different, the duplicate obs will slip in
 
        if (apply_pres_k) then
           duplogic=(duplogic_1.or.duplogic_2).and.&
