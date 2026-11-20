@@ -27,6 +27,7 @@ contains
 
 subroutine dupcheck(nobs, nele, data, muse, dup, &
                     ier, itime, ilate, ilone, id, &
+                    ikxx, obsname,          &
                     l_closeobs, min_offset, &
                     ipres, skip_pres_check)
 !$$$  subprogram documentation block
@@ -81,11 +82,15 @@ subroutine dupcheck(nobs, nele, data, muse, dup, &
   use kinds, only: r_kind, i_kind, r_double
   use constants, only: one, r1000
   use qcmod, only: dfact, dfact1, epsdup, epsdup_2
+  use qcmod, only: i_dupobschk_enhanced, l_print_obsqc
+  use convinfo, only: ictype, icsubtype
 ! epsdup and epsdup_2 are initialized to zero in qcmod and may be set via
 ! the OBSQC namelist group (e.g., epsdup~0.005 deg, epsdup_2~0.1 deg)
 
   integer(i_kind), intent(in)    :: nobs, nele
   integer(i_kind), intent(in)    :: ier, itime, ilate, ilone, id
+  integer(i_kind), intent(in)    :: ikxx
+  character(len=10), intent(in)  :: obsname
   integer(i_kind), intent(in)    :: min_offset
   real(r_kind),    intent(in)    :: data(nele,nobs)
   logical,         intent(inout) :: muse(nobs)
@@ -94,15 +99,21 @@ subroutine dupcheck(nobs, nele, data, muse, dup, &
   integer(i_kind), optional, intent(in) :: ipres
   logical,         optional, intent(in) :: skip_pres_check(:)
 
+! Declare local parameters
+  character(len=1), parameter       :: cblank = ' '
+  character(len=8), parameter       :: thisname = 'dupcheck'
+
   integer(i_kind)            :: i, k, l, nlen, nlen2, ipres_loc
+  integer(i_kind)            :: ikx, itype
   real(r_kind)               :: hr_offset, tfact
   real(r_double),   dimension(nobs) :: rstn
   character(len=8), dimension(nobs) :: cstn
   character(len=8), dimension(nobs) :: stnid_main
-  character(len=8)                  :: cstn_tmp
-  character(len=1), parameter       :: cblank = ' '
   logical :: duplogic, duplogic_1, duplogic_2, apply_pres_k
   logical :: l_print_loc
+  integer(i_kind),  dimension(nobs) :: l_dupchk_2
+  real(r_kind)                      :: diff_late, diff_lone
+  real(r_kind),     dimension(nobs) :: obtime_offset
 
 ! equivalence(rstn, cstn)           ! equivalence is obsolete in modern FORTRAN 
 
@@ -111,29 +122,49 @@ subroutine dupcheck(nobs, nele, data, muse, dup, &
   else
      ipres_loc = 0
   end if
-  l_print_loc = .false.
+  l_print_loc = l_print_obsqc
 
   hr_offset = real(min_offset/60.0_r_kind,r_kind)
   dup = one
+  obtime_offset(1:nobs) = abs(data(itime,1:nobs)-hr_offset)
 
 ! Get the main station ID (the string prededing the first blank in original station ID string)  
 ! Purpose: for mesonet station ids of the form "STNIxxxa", the trailing character "a" 
 !          in position 8 (preceded by blanks) is intentionally excluded from the comparison.
   rstn(1:nobs) = data(id, 1:nobs)
   cstn = transfer(rstn, cstn)
-  do k=1,nobs
-     cstn_tmp = adjustl(cstn(k))        ! removing the leading space(s)
-!    if first blank was detected, set the following element(s) be space(s)
-     do i=1,7
-        if (cstn_tmp(i:i) == cblank) then
-           cstn_tmp(i+1:i+1) = cblank
-        end if
-     end do
-     stnid_main(k) = cstn_tmp
-     if (l_print_loc) then
-        write(6,'(1x,A9,A8,A4,A8,4x,I8.8)') 'ID Check:', adjustl(cstn(k)), '===>', stnid_main(k), k
+
+  if ( i_dupobschk_enhanced >= 0 ) then
+     l_dupchk_2(1:nobs) = .true.          ! dup obs matching with station ID and location
+  else if ( i_dupobschk_enhanced < 0 ) then
+     l_dupchk_2(1:nobs) = .false.         ! No dup obs matching with station ID, only with location
+  end if
+
+  stn_kloop: do k=1,nobs
+     ikx=nint(data(ikxx,k))
+     itype=ictype(ikx)
+     if ( i_dupobschk_enhanced == 1 ) then  ! dup obs matching with station ID for surface obs only
+        select case (trim(adjustl(obsname)))
+           case ('t','q','w')                     ! dependency on surface obs (for t/q/wind only)
+              l_dupchk_2(k) = ((itype >= 180 .and. itype <= 199) .or. (itype >= 280 .and. itype <= 299)) 
+           case default
+              l_dupchk_2(k) = .true.
+        end select      
      end if
-  end do
+     stnid_main(k) = adjustl(cstn(k))        ! removing the leading space(s)
+!    if first blank was detected, set the following element(s) be space(s)
+     stn_iloop: do i=1,7
+        if (stnid_main(k)(i:i) == cblank) then
+           stnid_main(k)(i+1:8) = cblank
+           exit stn_iloop
+        end if
+     end do stn_iloop
+     if (l_print_loc) then
+        write(6,'(1x,A8,A9,A10,A10,A8,A4,A8,4x,I8.8,4x,I3,4x,L1)')              &
+             adjustl(thisname), ' in setup', adjustl(obsname),':ID Check:',        &
+             adjustl(cstn(k)), '===>', stnid_main(k), k, itype, l_dupchk_2(k)
+     end if
+  end do stn_kloop
 
   kloop: do k=1,nobs
 
@@ -147,13 +178,18 @@ subroutine dupcheck(nobs, nele, data, muse, dup, &
 
     lloop: do l=k+1,nobs
 
-       duplogic_1=abs(data(ilate,k)-data(ilate,l))<=epsdup .and.  &  !duplicate stations can have lat/lon specs
-                  abs(data(ilone,k)-data(ilone,l))<=epsdup           !differing by as much as epsdup (~0.005 deg)
+       diff_late = abs(data(ilate,k)-data(ilate,l))
+       diff_lone = abs(data(ilone,k)-data(ilone,l))
+       duplogic_1=diff_late<=epsdup .and.  &   !duplicate stations can have lat/lon specs
+                  diff_lone<=epsdup            !differing by as much as epsdup (~0.005 deg)
 
-       duplogic_2=abs(data(ilate,k)-data(ilate,l))<=epsdup_2 .and.  & !station can appear as TAC station and BUFR station
-                  abs(data(ilone,k)-data(ilone,l))<=epsdup_2 .and.  & !with lat/lon specs differing by as much as epsdup_2 (~0.1 deg)
-                  stnid_main(k)==stnid_main(l)                        !this logic addresses this situation, but only when the station ids
-                                                                      !are the same. when they are different, the duplicate obs will slip in
+       duplogic_2 = .false.                    ! initialised as no matching with sation ID
+       if (l_dupchk_2(k) .and. l_dupchk_2(l)) then
+          duplogic_2=diff_late<=epsdup_2 .and.  & !station can appear as TAC station and BUFR station
+                     diff_lone<=epsdup_2 .and.  & !with lat/lon specs differing by as much as epsdup_2 (~0.1 deg)
+                     stnid_main(k)==stnid_main(l) !this logic addresses this situation, but only when the station ids
+                                                  !are the same. when they are different, the duplicate obs will slip in
+       end if
 
        if (apply_pres_k) then
           duplogic=(duplogic_1.or.duplogic_2).and.&
@@ -168,7 +204,8 @@ subroutine dupcheck(nobs, nele, data, muse, dup, &
 
        if (duplogic) then
           if(l_closeobs) then
-             if(abs(data(itime,k)-hr_offset)<abs(data(itime,l)-hr_offset)) then
+!            if(abs(data(itime,k)-hr_offset)<abs(data(itime,l)-hr_offset)) then
+             if(obtime_offset(k) < obtime_offset(l)) then
                  muse(l)=.false.
              else
                  muse(k)=.false.

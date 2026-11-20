@@ -310,6 +310,7 @@ subroutine setupw(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsav
   character(8),allocatable,dimension(:):: cprvstg,csprvstg
   character(8) c_prvstg,c_sprvstg
   real(r_double) r_prvstg,r_sprvstg
+  character(10) :: obsname
 
   type(sparr2) :: dhx_dx_u, dhx_dx_v
   integer(i_kind) :: iz, u_ind, v_ind, nnz, nind
@@ -467,8 +468,9 @@ subroutine setupw(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsav
      rtmasfctype = (itype>=280 .and. itype<=295)
      skip_pres_check(k) = twodvar_regional .or. (l_rtma3d .and. rtmasfctype)
   end do
-  call dupcheck(nobs, nele, data, muse, dup, ier, itime, ilate, ilone, id, &
-                l_closeobs, min_offset, ipres=ipres, skip_pres_check=skip_pres_check)
+  obsname='w'
+  call dupcheck(nobs, nele, data, muse, dup, ier, itime, ilate, ilone, id, ikxx, &
+                obsname, l_closeobs, min_offset, ipres=ipres, skip_pres_check=skip_pres_check)
 
   call dtime_setup()
   num_bad_ikx=0

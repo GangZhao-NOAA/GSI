@@ -266,6 +266,7 @@ subroutine setupq(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsav
   character(8),allocatable,dimension(:):: cprvstgp,csprvstgp ! <-- provider info array for pseudo obs
   character(8) c_prvstg,c_sprvstg
   real(r_double) r_prvstg,r_sprvstg
+  character(10) :: obsname
 
   logical ice,proceed
   logical,dimension(nobs):: luse,muse
@@ -392,8 +393,9 @@ subroutine setupq(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsav
      skip_pres_check(k) = twodvar_regional .or. (l_rtma3d .and. rtmasfctype) .or. &
                           (hofx_2m_sfcfile .and. landsfctype)
   end do
-  call dupcheck(nobs, nele, data, muse, dup, ier, itime, ilate, ilone, id, &
-                l_closeobs, min_offset, ipres=ipres, skip_pres_check=skip_pres_check)
+  obsname='q'
+  call dupcheck(nobs, nele, data, muse, dup, ier, itime, ilate, ilone, id, ikxx, &
+                obsname, l_closeobs, min_offset, ipres=ipres, skip_pres_check=skip_pres_check)
 
 ! If requested, save select data for output to diagnostic file
   if(conv_diagsave)then

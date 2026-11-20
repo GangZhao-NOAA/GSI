@@ -318,6 +318,7 @@ subroutine setupt(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsav
   character(8),allocatable,dimension(:):: cprvstgp,csprvstgp ! <-- provider info array for pseudo obs
   character(8) c_prvstg,c_sprvstg
   real(r_double) r_prvstg,r_sprvstg
+  character(10) :: obsname
 
   logical,dimension(nobs):: luse,muse
   integer(i_kind),dimension(nobs):: ioid ! initial (pre-distribution) obs ID
@@ -480,8 +481,9 @@ subroutine setupt(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diagsav
      skip_pres_check(k) = twodvar_regional .or. (l_rtma3d .and. rtmasfctype) .or. &
                           (hofx_2m_sfcfile .and. landsfctype)
   end do
-  call dupcheck(nobs, nele, data, muse, dup, ier, itime, ilate, ilone, id, &
-                l_closeobs, min_offset, ipres=ipres, skip_pres_check=skip_pres_check)
+  obsname='t'
+  call dupcheck(nobs, nele, data, muse, dup, ier, itime, ilate, ilone, id, ikxx, &
+                obsname, l_closeobs, min_offset, ipres=ipres, skip_pres_check=skip_pres_check)
 
 ! Run a buddy-check
 ! Note: buddy check crashes for hofx_2m_sfcfile option.

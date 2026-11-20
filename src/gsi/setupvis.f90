@@ -156,6 +156,7 @@ subroutine setupvis(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diags
   character(8),allocatable,dimension(:):: cprvstg,csprvstg
   character(8) c_prvstg,c_sprvstg
   real(r_double) r_prvstg,r_sprvstg
+  character(10) :: obsname
 
   logical:: in_curbin, in_anybin
   type(visNode),pointer:: my_head
@@ -222,7 +223,9 @@ subroutine setupvis(obsLL,odiagLL,lunin,mype,bwork,awork,nele,nobs,is,conv_diags
   end do
 
 ! Check for duplicate observations at same location
-  call dupcheck(nobs, nele, data, muse, dup, ier, itime, ilate, ilone, id, l_closeobs, min_offset)
+  obsname='vis'
+  call dupcheck(nobs, nele, data, muse, dup, ier, itime, ilate, ilone, id,      &
+                ikxx, obsname, l_closeobs, min_offset)
 
 ! If requested, save select data for output to diagnostic file
   if(conv_diagsave)then
